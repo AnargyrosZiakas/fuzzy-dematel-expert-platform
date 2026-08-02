@@ -53,9 +53,7 @@ def render_matrix_grid() -> None:
 
     definitions = load_factor_definitions()
     judgments: dict[str, str | None] = st.session_state["judgments"]
-    display_labels = {
-        item.code: f"{item.code} — {item.label}" for item in SCALE_ITEMS
-    }
+    display_labels = {item.code: item.code for item in SCALE_ITEMS}
 
     with st.container(key="matrix_grid"):
         header_columns = st.columns([1.22] + [1.0] * len(FACTOR_CODES), gap="small")
@@ -99,7 +97,7 @@ def render_matrix_grid() -> None:
                     if from_factor == to_factor:
                         st.text_input(
                             accessible_label,
-                            value="0",
+                            value="N/A",
                             key=f"diagonal_{from_factor}",
                             disabled=True,
                             label_visibility="collapsed",
@@ -120,9 +118,12 @@ def render_matrix_grid() -> None:
                         options=SCALE_CODES,
                         index=selected_index,
                         format_func=lambda code, labels=display_labels: labels[code],
-                        placeholder="—",
+                        placeholder="Select",
                         key=widget_key,
                         on_change=_store_judgment,
                         args=(from_factor, to_factor, widget_key),
                         label_visibility="collapsed",
+                        help=" · ".join(
+                            f"{item.code}: {item.label}" for item in SCALE_ITEMS
+                        ),
                     )
