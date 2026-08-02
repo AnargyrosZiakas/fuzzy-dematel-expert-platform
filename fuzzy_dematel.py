@@ -13,7 +13,8 @@ import numpy as np
 import pandas as pd
 
 from config import FACTOR_CODES
-from export import LONG_COLUMNS
+from export import ADMIN_RESPONSE_COLUMNS, LONG_COLUMNS
+from questionnaire_sets import all_relationships
 
 
 def load_long_export(path: str | Path) -> pd.DataFrame:
@@ -74,3 +75,42 @@ def load_wide_excel(
         arrays.append(matrix)
     return arrays[0], arrays[1], arrays[2]
 
+
+def load_distributed_export(path: str | Path) -> pd.DataFrame:
+    """Read raw multi-respondent set data without mathematical aggregation."""
+
+    source = Path(path)
+    if source.suffix.lower() == ".csv":
+        frame = pd.read_csv(source)
+    elif source.suffix.lower() in {".xlsx", ".xlsm"}:
+        frame = pd.read_excel(source, sheet_name="Responses_Long")
+    else:
+        raise ValueError("Use a .csv or .xlsx distributed-response export.")
+
+    missing_columns = set(ADMIN_RESPONSE_COLUMNS).difference(frame.columns)
+    if missing_columns:
+        raise ValueError(
+            f"Distributed export is missing columns: {sorted(missing_columns)}"
+        )
+    if frame.duplicated(
+        [
+            "respondent_id",
+            "source_variable_code",
+            "target_variable_code",
+        ]
+    ).any():
+        raise ValueError("A respondent has duplicate directed relationships.")
+    if (
+        frame["source_variable_code"] == frame["target_variable_code"]
+    ).any():
+        raise ValueError("Distributed exports cannot contain diagonal evaluations.")
+
+    expected_set_by_pair = {
+        (relationship.source_code, relationship.target_code): relationship.set_id
+        for relationship in all_relationships()
+    }
+    for row in frame.itertuples(index=False):
+        pair = (row.source_variable_code, row.target_variable_code)
+        if expected_set_by_pair.get(pair) != int(row.set_id):
+            raise ValueError("A response does not match the audited set partition.")
+    return frame[ADMIN_RESPONSE_COLUMNS].copy()

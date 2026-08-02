@@ -6,15 +6,15 @@ from collections.abc import Callable
 
 import streamlit as st
 
-from config import APP_TITLE, REQUIRED_COMPARISONS
-from validation import validate_matrix
+from config import APP_TITLE
+from validation import validate_assigned_responses
 
 PAGE_LABELS = (
     "Welcome",
     "Research",
     "Consent",
     "Expert code",
-    "Influence matrix",
+    "Evaluation",
     "Submit",
 )
 
@@ -29,6 +29,14 @@ def initialize_session_state() -> None:
         "judgments": {},
         "submitted": False,
         "submitted_records": None,
+        "respondent_id": None,
+        "assignment": None,
+        "assigned_set_id": None,
+        "question_index": 0,
+        "autosave_error": None,
+        "resume_error": None,
+        "progress_restore_attempted": False,
+        "admin_authenticated": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -150,10 +158,22 @@ def inject_global_styles() -> None:
         }
         .st-key-matrix_grid div[data-testid="stSelectbox"]
         div[data-baseweb="select"] > div {
-            min-height: 38px; padding-left: 0.35rem; padding-right: 0.2rem;
+            background: #FFFFFF; border: 2px solid #BCCCDC; min-height: 44px;
+            padding-left: 0.35rem; padding-right: 0.2rem;
+        }
+        .st-key-matrix_grid div[data-testid="stSelectbox"]
+        div[data-baseweb="select"] span {
+            color: var(--ink); font-size: 16px; font-weight: 750;
+            opacity: 1; text-align: center; width: 100%;
+        }
+        .st-key-matrix_grid div[data-testid="stSelectbox"]
+        div[data-baseweb="select"]:focus-within > div {
+            border-color: var(--teal);
+            box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.18);
         }
         .st-key-matrix_grid div[data-testid="stTextInput"] input {
-            min-height: 38px; text-align: center; font-weight: 700;
+            color: #FFFFFF; background: #526D82; min-height: 44px;
+            text-align: center; font-size: 15px; font-weight: 800; opacity: 1;
         }
         .factor-code {
             display: inline-flex; align-items: center; justify-content: center;
@@ -161,10 +181,82 @@ def inject_global_styles() -> None:
             border-bottom: 1px dotted #627D98;
         }
         .row-progress { color: #829AB1; font-size: 0.68rem; }
+        .relationship-direction {
+            display: grid; grid-template-columns: 1fr auto 1fr;
+            gap: 1rem; align-items: stretch; margin: 1rem 0 1.5rem;
+        }
+        .variable-card {
+            display: grid; gap: 0.45rem; background: #FFFFFF;
+            border: 1px solid var(--line); border-radius: 16px;
+            padding: 1.1rem; min-height: 170px;
+        }
+        .variable-card.source-card { border-top: 4px solid var(--teal); }
+        .variable-card.target-card { border-top: 4px solid var(--gold); }
+        .variable-role {
+            color: #627D98; font-size: 0.75rem; font-weight: 750;
+            letter-spacing: 0.08em; text-transform: uppercase;
+        }
+        .variable-code {
+            align-items: center; background: var(--navy); border-radius: 9px;
+            color: #FFFFFF; display: inline-flex; font-size: 1.05rem;
+            font-weight: 800; justify-content: center; min-height: 2.25rem;
+            width: 3.2rem;
+        }
+        .variable-card small { color: #526D82; line-height: 1.45; }
+        .direction-arrow {
+            align-items: center; color: var(--teal); display: flex;
+            font-size: 2rem; font-weight: 800; justify-content: center;
+        }
+        div[class*="st-key-response_"] [data-testid="stRadio"]
+        [role="radiogroup"] {
+            display: flex; flex-wrap: wrap; gap: 0.55rem;
+        }
+        div[class*="st-key-response_"] [data-testid="stRadio"] label {
+            align-items: center; background: #FFFFFF; border: 2px solid var(--line);
+            border-radius: 10px; display: flex; min-height: 44px;
+            padding: 0.55rem 0.75rem; transition: all 120ms ease;
+        }
+        div[class*="st-key-response_"] [data-testid="stRadio"] label p {
+            color: var(--ink); font-size: 16px; font-weight: 650;
+            line-height: 1.25; opacity: 1; white-space: normal;
+        }
+        div[class*="st-key-response_"] [data-testid="stRadio"]
+        label:has(input:checked) {
+            background: var(--teal-soft); border-color: var(--teal);
+            box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.12);
+        }
+        div[class*="st-key-response_"] [data-testid="stRadio"]
+        label:focus-within { outline: 3px solid rgba(15, 118, 110, 0.22); }
+        .selected-response {
+            align-items: center; background: #FFFFFF; border: 2px dashed #9FB3C8;
+            border-radius: 12px; display: flex; justify-content: space-between;
+            margin-top: 0.8rem; min-height: 44px; padding: 0.55rem 0.9rem;
+        }
+        .selected-response span { color: #627D98; font-size: 0.85rem; }
+        .selected-response strong {
+            color: var(--navy); font-size: 18px; font-weight: 800;
+            text-align: center;
+        }
+        .selected-response.completed {
+            background: var(--teal-soft); border: 2px solid var(--teal);
+        }
+        .autosave-note { color: var(--teal); font-size: 0.82rem; }
+        .admin-link {
+            border: 1px solid var(--line); border-radius: 9px; color: #526D82;
+            display: block; font-size: 0.82rem; padding: 0.55rem 0.7rem;
+            text-align: center; text-decoration: none;
+        }
+        .admin-link:hover { border-color: var(--teal); color: var(--teal); }
         @media (max-width: 760px) {
             .block-container { padding-top: 1rem; }
             .hero-card, .content-card { padding: 1rem; }
             .factor-definition-row { grid-template-columns: 1fr; gap: 0.5rem; }
+            .relationship-direction { grid-template-columns: 1fr; }
+            .direction-arrow { transform: rotate(90deg); }
+            .variable-card { min-height: auto; }
+            div[class*="st-key-response_"] [data-testid="stRadio"] label {
+                flex: 1 1 calc(50% - 0.55rem); justify-content: center;
+            }
         }
         </style>
         """,
@@ -172,17 +264,24 @@ def inject_global_styles() -> None:
     )
 
 
-def render_sidebar() -> None:
+def render_sidebar(*, admin_mode: bool = False) -> None:
     """Render read-only study progress without bypassing the guarded flow."""
 
     current_page = int(st.session_state["current_page"])
-    matrix_status = validate_matrix(st.session_state["judgments"])
     with st.sidebar:
         st.markdown(
             "<p class='eyebrow'>Research instrument</p>",
             unsafe_allow_html=True,
         )
         st.markdown(f"### {APP_TITLE}")
+        if admin_mode:
+            st.markdown("### Administrator dashboard")
+            st.markdown(
+                "<a class='admin-link' href='?'>← Return to questionnaire</a>",
+                unsafe_allow_html=True,
+            )
+            return
+
         st.markdown("<div class='step-list'>", unsafe_allow_html=True)
         for index, label in enumerate(PAGE_LABELS):
             if index == current_page:
@@ -199,12 +298,22 @@ def render_sidebar() -> None:
             )
         st.markdown("</div>", unsafe_allow_html=True)
         st.divider()
-        st.caption("Matrix completion")
-        st.progress(matrix_status.completion_ratio)
+        set_id = st.session_state.get("assigned_set_id")
+        if set_id:
+            status = validate_assigned_responses(
+                int(set_id), st.session_state["judgments"]
+            )
+            st.caption(f"Questionnaire set {set_id} progress")
+            st.progress(status.completion_ratio)
+            st.markdown(f"**{status.completed} / {status.required}** evaluations")
+            st.caption("Each selection is saved automatically.")
+        else:
+            st.caption("Your balanced questionnaire set is assigned after consent.")
+        st.divider()
         st.markdown(
-            f"**{matrix_status.completed} / {REQUIRED_COMPARISONS}** comparisons"
+            "<a class='admin-link' href='?admin=1'>Administrator access</a>",
+            unsafe_allow_html=True,
         )
-        st.caption("Responses stay in this browser session until final submission.")
 
 
 def go_to_page(page_index: int) -> None:

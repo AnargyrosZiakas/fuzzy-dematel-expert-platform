@@ -10,9 +10,20 @@ import numpy as np
 import pandas as pd
 
 from config import FACTOR_CODES, TOTAL_CELLS
-from export import generate_exports, records_to_wide_dataframe
-from fuzzy_dematel import load_long_export, load_wide_excel, tfn_arrays_from_long
-from validation import build_response_records
+from export import (
+    generate_administrator_exports,
+    generate_exports,
+    records_to_wide_dataframe,
+)
+from fuzzy_dematel import (
+    load_distributed_export,
+    load_long_export,
+    load_wide_excel,
+    tfn_arrays_from_long,
+)
+from models import AssignmentRecord, DistributedResponseRecord
+from questionnaire_sets import get_questionnaire_set
+from validation import build_distributed_response_record, build_response_records
 
 
 def _records(complete_judgments: dict[str, str]):
@@ -77,3 +88,73 @@ def test_excel_workbooks_contain_documented_sheets(
         "Factor_Definitions",
     ]
 
+
+def _distributed_dataset() -> tuple[
+    list[DistributedResponseRecord], list[AssignmentRecord]
+]:
+    responses: list[DistributedResponseRecord] = []
+    assignments: list[AssignmentRecord] = []
+    timestamp = datetime(2026, 8, 2, 12, 0, tzinfo=UTC)
+    for set_id in range(1, 8):
+        respondent_id = UUID(f"00000000-0000-0000-0000-{set_id:012d}")
+        assignments.append(
+            AssignmentRecord(
+                respondent_id=str(respondent_id),
+                expert_code=f"EXP-SET{set_id}",
+                set_id=set_id,
+                status="completed",
+                started_at=timestamp.isoformat(),
+                completed_at=timestamp.isoformat(),
+            )
+        )
+        responses.extend(
+            build_distributed_response_record(
+                respondent_id=respondent_id,
+                expert_code=f"EXP-SET{set_id}",
+                relationship=relationship,
+                linguistic_value="I",
+                responded_at=timestamp,
+            )
+            for relationship in get_questionnaire_set(set_id)
+        )
+    return responses, assignments
+
+
+def test_administrator_export_reconstructs_complete_relationship_design(
+    tmp_path,
+) -> None:
+    responses, assignments = _distributed_dataset()
+    bundle = generate_administrator_exports(
+        responses,
+        assignments,
+        minimum_evaluations=1,
+    )
+    csv_frame = pd.read_csv(BytesIO(bundle.responses_csv))
+    assert len(csv_frame) == 306
+    assert not (
+        csv_frame["source_variable_code"]
+        == csv_frame["target_variable_code"]
+    ).any()
+
+    csv_path = tmp_path / "distributed.csv"
+    csv_path.write_bytes(bundle.responses_csv)
+    loaded = load_distributed_export(csv_path)
+    assert len(loaded) == 306
+
+    book = pd.ExcelFile(BytesIO(bundle.complete_excel))
+    assert book.sheet_names == [
+        "Responses_Long",
+        "Relationship_Coverage",
+        "Evaluation_Count_Matrix",
+        "Set_Summary",
+        "Factor_Definitions",
+        "Metadata",
+    ]
+    count_matrix = pd.read_excel(
+        BytesIO(bundle.complete_excel),
+        sheet_name="Evaluation_Count_Matrix",
+        index_col=0,
+    )
+    assert count_matrix.shape == (18, 18)
+    assert np.diag(count_matrix.to_numpy()).tolist() == [0] * 18
+    assert (count_matrix.to_numpy().sum() == 306)

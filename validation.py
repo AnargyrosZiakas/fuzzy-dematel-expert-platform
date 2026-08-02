@@ -8,11 +8,19 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from config import (
+    CANNOT_ASSESS_VALUE,
     FACTOR_CODES,
     REQUIRED_COMPARISONS,
+    RESPONSE_OPTIONS,
     SCALE_BY_CODE,
 )
-from models import MatrixValidationResult, ResponseRecord
+from models import (
+    DirectedRelationship,
+    DistributedResponseRecord,
+    MatrixValidationResult,
+    ResponseRecord,
+)
+from questionnaire_sets import get_questionnaire_set
 
 EXPERT_CODE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,63}$")
 
@@ -72,6 +80,77 @@ def validate_matrix(
     )
 
 
+def validate_assigned_responses(
+    set_id: int,
+    judgments: Mapping[str, str | None],
+) -> MatrixValidationResult:
+    """Validate only the relationships belonging to one assigned set."""
+
+    relationships = get_questionnaire_set(set_id)
+    missing: list[tuple[str, str]] = []
+    invalid: list[tuple[str, str]] = []
+    completed = 0
+    for relationship in relationships:
+        value = judgments.get(relationship.key)
+        pair = (relationship.source_code, relationship.target_code)
+        if value is None or value == "":
+            missing.append(pair)
+        elif value not in RESPONSE_OPTIONS:
+            invalid.append(pair)
+        else:
+            completed += 1
+    return MatrixValidationResult(
+        completed=completed,
+        required=len(relationships),
+        missing=tuple(missing),
+        invalid=tuple(invalid),
+    )
+
+
+def build_distributed_response_record(
+    *,
+    respondent_id: UUID,
+    expert_code: str,
+    relationship: DirectedRelationship,
+    linguistic_value: str,
+    responded_at: datetime | None = None,
+) -> DistributedResponseRecord:
+    """Build one canonical autosave record for an assigned relationship."""
+
+    is_code_valid, normalized_code, code_error = validate_expert_code(expert_code)
+    if not is_code_valid:
+        raise ValueError(code_error)
+    if relationship.source_code == relationship.target_code:
+        raise ValueError("Diagonal relationships cannot be stored.")
+    if linguistic_value not in RESPONSE_OPTIONS:
+        raise ValueError("Select a valid linguistic response.")
+
+    if linguistic_value == CANNOT_ASSESS_VALUE:
+        lower = modal = upper = None
+    else:
+        lower, modal, upper = SCALE_BY_CODE[linguistic_value].tfn
+
+    timestamp = responded_at or datetime.now(UTC)
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+
+    return DistributedResponseRecord(
+        submission_id=str(respondent_id),
+        expert_code=normalized_code,
+        set_id=relationship.set_id,
+        timestamp=timestamp.astimezone(UTC).isoformat(),
+        from_factor=relationship.source_code,
+        source_variable_name=relationship.source_name,
+        to_factor=relationship.target_code,
+        target_variable_name=relationship.target_name,
+        linguistic_value=linguistic_value,
+        tfn_l=lower,
+        tfn_m=modal,
+        tfn_u=upper,
+        is_diagonal=False,
+    )
+
+
 def build_response_records(
     *,
     submission_id: UUID,
@@ -127,4 +206,3 @@ def build_response_records(
             )
 
     return records
-

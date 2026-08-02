@@ -31,8 +31,8 @@ def render() -> None:
           <ul>
             <li><strong>Purpose:</strong> collect expert judgements for doctoral
             research using Fuzzy DEMATEL.</li>
-            <li><strong>Task:</strong> complete all 306 directed, off-diagonal
-            influence comparisons.</li>
+            <li><strong>Task:</strong> complete one automatically assigned set of
+            approximately 43–44 directed influence relationships.</li>
             <li><strong>Voluntary participation:</strong> participation is voluntary.
             You may leave at any time before submitting, without providing a reason
             or experiencing negative consequences.</li>

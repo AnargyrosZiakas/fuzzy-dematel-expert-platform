@@ -7,10 +7,18 @@ from uuid import UUID
 
 import pytest
 
-from config import FACTOR_CODES, REQUIRED_COMPARISONS, TOTAL_CELLS
+from config import (
+    CANNOT_ASSESS_VALUE,
+    FACTOR_CODES,
+    REQUIRED_COMPARISONS,
+    TOTAL_CELLS,
+)
+from questionnaire_sets import get_questionnaire_set
 from validation import (
+    build_distributed_response_record,
     build_response_records,
     comparison_key,
+    validate_assigned_responses,
     validate_expert_code,
     validate_matrix,
 )
@@ -79,3 +87,30 @@ def test_build_records_rejects_incomplete_matrix() -> None:
             judgments={},
         )
 
+
+def test_assigned_set_validation_accepts_cannot_assess() -> None:
+    relationships = get_questionnaire_set(1)
+    judgments = {
+        relationship.key: CANNOT_ASSESS_VALUE
+        for relationship in relationships
+    }
+    result = validate_assigned_responses(1, judgments)
+    assert result.is_valid
+    assert result.completed == len(relationships) == 44
+
+
+def test_distributed_record_has_names_set_and_nullable_tfn() -> None:
+    relationship = get_questionnaire_set(7)[0]
+    record = build_distributed_response_record(
+        respondent_id=UUID("12345678-1234-5678-1234-567812345678"),
+        expert_code="EXP-TEST01",
+        relationship=relationship,
+        linguistic_value=CANNOT_ASSESS_VALUE,
+        responded_at=datetime(2026, 8, 2, 12, 0, tzinfo=UTC),
+    )
+    assert record["set_id"] == 7
+    assert record["from_factor"] == relationship.source_code
+    assert record["source_variable_name"] == relationship.source_name
+    assert record["target_variable_name"] == relationship.target_name
+    assert record["is_diagonal"] is False
+    assert record["tfn_l"] is record["tfn_m"] is record["tfn_u"] is None
