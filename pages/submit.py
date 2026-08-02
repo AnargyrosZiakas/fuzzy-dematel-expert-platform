@@ -1,149 +1,119 @@
-"""Final validation, Supabase submission, and export download step."""
+"""Final review and atomic completion of one assigned questionnaire set."""
 
 from __future__ import annotations
 
 import logging
-from typing import Any
-from uuid import uuid4
+from uuid import UUID
 
+import pandas as pd
 import streamlit as st
 
 from components.layout import go_to_page, page_header
-from config import REQUIRED_COMPARISONS
 from database import (
+    AssignmentError,
     DatabaseConfigurationError,
     SubmissionError,
-    SupabaseResponseRepository,
-    SupabaseSettings,
 )
-from export import generate_exports
-from models import ResponseRecord
+from questionnaire_sets import get_questionnaire_set
 from research_content import CONTACT_EMAIL, THANK_YOU_MESSAGE
-from validation import (
-    build_response_records,
-    validate_expert_code,
-    validate_matrix,
-)
+from services import get_repository
+from validation import validate_assigned_responses, validate_expert_code
 
 LOGGER = logging.getLogger(__name__)
 
 
-def _server_secrets() -> dict[str, Any]:
-    try:
-        return dict(st.secrets)
-    except Exception:
-        return {}
+def _complete_submission() -> None:
+    """Verify and atomically complete the respondent's assigned set."""
 
-
-def _submit() -> None:
-    """Validate, create one UUID, persist atomically, and retain a receipt."""
-
-    status = validate_matrix(st.session_state["judgments"])
-    code_is_valid, normalized_code, code_message = validate_expert_code(
-        st.session_state["expert_code"]
+    set_id = st.session_state.get("assigned_set_id")
+    respondent_id = st.session_state.get("respondent_id")
+    if not set_id or not respondent_id:
+        st.error("Your questionnaire assignment is unavailable.")
+        return
+    status = validate_assigned_responses(
+        int(set_id), st.session_state["judgments"]
     )
-    if not st.session_state["consent_given"]:
-        st.error("Informed consent is required before submission.")
-        return
-    if not code_is_valid:
-        st.error(code_message)
-        return
     if not status.is_valid:
         st.error(
-            f"Submission is blocked: {len(status.missing)} comparison(s) are missing."
+            f"Submission is blocked: {len(status.missing)} assigned "
+            "relationship(s) are incomplete."
         )
         return
 
     try:
-        submission_id = uuid4()
-        records = build_response_records(
-            submission_id=submission_id,
-            expert_code=normalized_code,
-            judgments=st.session_state["judgments"],
-        )
-        settings = SupabaseSettings.from_sources(_server_secrets())
-        repository = SupabaseResponseRepository.connect(settings)
-        with st.spinner("Securely storing the complete matrix…"):
-            repository.save_submission(records)
-        st.session_state["submitted_records"] = records
-        st.session_state["submitted"] = True
-    except (DatabaseConfigurationError, SubmissionError, ValueError) as exc:
+        with st.spinner("Finalising your securely saved responses…"):
+            assignment = get_repository().complete_assignment(
+                UUID(str(respondent_id))
+            )
+    except (
+        DatabaseConfigurationError,
+        AssignmentError,
+        SubmissionError,
+    ) as exc:
         st.error(str(exc))
+        return
     except Exception:
-        LOGGER.exception("Unexpected submission failure")
+        LOGGER.exception("Unexpected distributed submission failure")
         st.error(
-            "An unexpected error prevented submission. Your answers are still "
-            "available in this browser session; please retry."
+            "An unexpected error prevented final submission. Your answers remain "
+            "saved; please retry."
         )
+        return
+
+    st.session_state["assignment"] = dict(assignment)
+    st.session_state["submitted"] = True
 
 
-def _render_downloads(records: list[ResponseRecord]) -> None:
-    bundle = generate_exports(records)
-    submission_id = records[0]["submission_id"]
-    prefix = f"fuzzy_dematel_{submission_id}"
-    st.markdown("### Research data files")
-    st.caption(
-        "The four files contain the same submitted matrix in analysis-ready layouts."
+def _review_dataframe(set_id: int) -> pd.DataFrame:
+    relationships = get_questionnaire_set(set_id)
+    judgments = st.session_state["judgments"]
+    return pd.DataFrame.from_records(
+        {
+            "Question": relationship.position,
+            "Source": f"{relationship.source_code} — {relationship.source_name}",
+            "Target": f"{relationship.target_code} — {relationship.target_name}",
+            "Response": judgments.get(relationship.key, "Missing"),
+        }
+        for relationship in relationships
     )
-    first, second = st.columns(2)
-    with first:
-        st.download_button(
-            "Download long CSV",
-            bundle.long_csv,
-            file_name=f"{prefix}_long.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
-        st.download_button(
-            "Download long Excel",
-            bundle.long_excel,
-            file_name=f"{prefix}_long.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
-    with second:
-        st.download_button(
-            "Download wide CSV",
-            bundle.wide_csv,
-            file_name=f"{prefix}_wide.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
-        st.download_button(
-            "Download wide Excel (TFN sheets)",
-            bundle.wide_excel,
-            file_name=f"{prefix}_wide.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
 
 
 def render() -> None:
-    """Render preflight checks, one-time submission, receipt, and exports."""
+    """Render validation, response review, completion, and receipt."""
 
-    status = validate_matrix(st.session_state["judgments"])
+    set_id = st.session_state.get("assigned_set_id")
     code_is_valid, _, _ = validate_expert_code(st.session_state["expert_code"])
-    can_submit = (
-        bool(st.session_state["consent_given"])
-        and code_is_valid
-        and status.is_valid
+    if not set_id or not code_is_valid:
+        page_header(
+            "Step 6 of 6",
+            "Review and submit",
+            "A valid questionnaire assignment is required before submission.",
+        )
+        st.warning("Return to the evaluation step to create or restore an assignment.")
+        st.button(
+            "← Back to evaluation",
+            on_click=go_to_page,
+            args=(4,),
+        )
+        return
+
+    set_id = int(set_id)
+    status = validate_assigned_responses(set_id, st.session_state["judgments"])
+    assignment = st.session_state.get("assignment") or {}
+    is_submitted = bool(st.session_state["submitted"]) or (
+        assignment.get("status") == "completed"
     )
 
     page_header(
         "Step 6 of 6",
         "Review and submit",
         (
-            "Confirm the validation summary below. Final submission stores one "
-            "complete, immutable expert matrix under a unique UUID."
+            f"Review questionnaire set {set_id}. Every selection has already been "
+            "saved; final submission records one common completion timestamp."
         ),
     )
 
-    if st.session_state["submitted"]:
-        records = st.session_state.get("submitted_records")
-        if not records:
-            st.error("The submission receipt is unavailable in this session.")
-            return
-        submission_id = records[0]["submission_id"]
+    if is_submitted:
         st.success("Your expert evaluation has been submitted successfully.")
         st.markdown("## Thank you for your contribution")
         st.markdown(
@@ -151,64 +121,61 @@ def render() -> None:
             unsafe_allow_html=True,
         )
         st.markdown(
-            f"<div class='content-card'><strong>Submission receipt</strong><br>"
-            f"UUID: <code>{submission_id}</code><br>"
-            f"Stored matrix cells: <strong>{len(records)}</strong></div>",
+            "<div class='content-card'><strong>Submission receipt</strong><br>"
+            f"Respondent ID: <code>{st.session_state['respondent_id']}</code><br>"
+            f"Questionnaire set: <strong>{set_id}</strong><br>"
+            f"Stored evaluations: <strong>{status.completed}</strong></div>",
             unsafe_allow_html=True,
         )
         st.info(
-            "Keep the UUID if the study protocol permits later withdrawal or queries."
+            "Keep the respondent ID if the study protocol permits later queries."
         )
         st.caption(
             f"For any questions regarding the research: Anargyros Ziakas, "
             f"PhD Candidate, University of the Aegean · {CONTACT_EMAIL}"
         )
-        _render_downloads(records)
         return
 
     first, second, third = st.columns(3)
-    first.metric(
-        "Consent",
-        "Confirmed" if st.session_state["consent_given"] else "Missing",
-    )
-    second.metric("Expert code", "Valid" if code_is_valid else "Missing")
-    second.caption(
-        st.session_state["expert_code"] if code_is_valid else "Return to step 4"
-    )
-    third.metric("Comparisons", f"{status.completed} / {REQUIRED_COMPARISONS}")
+    first.metric("Questionnaire set", set_id)
+    second.metric("Saved evaluations", f"{status.completed} / {status.required}")
+    third.metric("Anonymous code", st.session_state["expert_code"])
 
-    if can_submit:
-        st.success("Validation passed. The complete 18×18 matrix is ready to submit.")
+    if status.is_valid:
+        st.success("Validation passed. Your assigned response set is complete.")
     else:
-        messages = []
-        if not st.session_state["consent_given"]:
-            messages.append("consent is not confirmed")
-        if not code_is_valid:
-            messages.append("the expert code is invalid")
-        if not status.is_valid:
-            messages.append(f"{len(status.missing)} comparisons are missing")
-        st.warning("Submission is not yet available: " + "; ".join(messages) + ".")
+        st.warning(
+            f"Complete the remaining {len(status.missing)} relationship(s) before "
+            "submitting."
+        )
+
+    with st.expander("Review all assigned responses", expanded=False):
+        st.dataframe(
+            _review_dataframe(set_id),
+            hide_index=True,
+            use_container_width=True,
+        )
 
     st.markdown(
-        "<div class='privacy-note'><strong>Final action</strong><br>After a "
-        "successful submission, this browser session prevents accidental "
-        "duplicate submission.</div>",
+        "<div class='privacy-note'><strong>Final action</strong><br>"
+        "Submitting marks this questionnaire set as complete. Your autosaved "
+        "responses remain linked only to the anonymous respondent ID.</div>",
         unsafe_allow_html=True,
     )
     st.write("")
-    back_column, _, submit_column = st.columns([1, 3, 1.4])
+    back_column, _, submit_column = st.columns([1.2, 3, 1.5])
     with back_column:
         st.button(
-            "← Back to matrix",
+            "← Back to evaluation",
             on_click=go_to_page,
             args=(4,),
             use_container_width=True,
         )
     with submit_column:
         st.button(
-            "Submit complete matrix",
+            "Submit response set",
             type="primary",
-            disabled=not can_submit,
-            on_click=_submit,
+            disabled=not status.is_valid,
+            on_click=_complete_submission,
             use_container_width=True,
         )

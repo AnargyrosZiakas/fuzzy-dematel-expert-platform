@@ -7,7 +7,12 @@ from html import escape
 import streamlit as st
 
 from components.layout import navigation_buttons, page_header
-from config import SCALE_ITEMS, ResearchSettings, load_factor_catalogue
+from config import (
+    CANNOT_ASSESS_VALUE,
+    SCALE_ITEMS,
+    ResearchSettings,
+    load_factor_catalogue,
+)
 from research_content import (
     CONTACT_EMAIL,
     DIRECT_INFLUENCE_REMINDER,
@@ -50,6 +55,14 @@ def _render_scale() -> None:
             f"<td>({item.lower:.2f}, {item.modal:.2f}, {item.upper:.2f})</td>"
             "</tr>"
         )
+    rows.append(
+        "<tr>"
+        "<td>—</td><td>—</td>"
+        f"<td>{CANNOT_ASSESS_VALUE}</td>"
+        "<td>Use only when a defensible professional judgement cannot be made.</td>"
+        "<td>Not assigned</td>"
+        "</tr>"
+    )
     st.markdown(
         "<div class='table-scroll'><table class='research-table'>"
         "<thead><tr><th>Numerical code</th><th>Acronym</th>"
@@ -123,8 +136,8 @@ def render() -> None:
     st.markdown(_paragraphs_html(EVALUATION_INSTRUCTIONS), unsafe_allow_html=True)
     st.markdown(
         "<div class='orientation-card'>How much does the "
-        "<strong>ROW factor</strong> directly influence the "
-        "<strong>COLUMN factor</strong>?</div>",
+        "<strong>source variable</strong> directly influence the "
+        "<strong>target variable</strong>?</div>",
         unsafe_allow_html=True,
     )
 
@@ -138,8 +151,8 @@ def render() -> None:
 
     st.subheader("Factors and Criteria")
     st.caption(
-        "The same 18 factors appear on both axes. Their full definitions are also "
-        "available as tooltips on the matrix factor codes."
+        "The complete study contains 18 factors. Each evaluation screen keeps the "
+        "source and target codes visible and shows both variables' full definitions."
     )
     _render_factor_catalogue()
 
