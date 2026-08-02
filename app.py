@@ -13,7 +13,8 @@ from components.layout import (
     render_sidebar,
 )
 from config import APP_ICON, APP_TITLE
-from pages import consent, expert_code, matrix, research, submit, welcome
+from pages import admin, consent, expert_code, matrix, research, submit, welcome
+from progress import restore_progress_from_query
 from utils import configure_logging
 
 LOGGER = logging.getLogger(__name__)
@@ -45,7 +46,27 @@ def main() -> None:
     configure_logging()
     initialize_session_state()
     inject_global_styles()
-    render_sidebar()
+
+    admin_mode = str(st.query_params.get("admin", "")).lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if not admin_mode:
+        restore_progress_from_query()
+    render_sidebar(admin_mode=admin_mode)
+
+    if admin_mode:
+        admin.render()
+        st.markdown(
+            "<p class='footer-note'>Fuzzy DEMATEL Research Administration · "
+            "Restricted access</p>",
+            unsafe_allow_html=True,
+        )
+        return
+
+    if st.session_state.get("resume_error"):
+        st.warning(st.session_state["resume_error"])
 
     page_index = int(st.session_state["current_page"])
     if not 0 <= page_index < len(PAGE_RENDERERS):
@@ -66,7 +87,7 @@ def main() -> None:
 
     st.markdown(
         "<p class='footer-note'>Fuzzy DEMATEL Expert Evaluation Platform · "
-        "Directional 18×18 research instrument</p>",
+        "Balanced directed-relationship research instrument</p>",
         unsafe_allow_html=True,
     )
 

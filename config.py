@@ -61,7 +61,7 @@ class LinguisticScaleItem:
 SCALE_ITEMS: Final[tuple[LinguisticScaleItem, ...]] = (
     LinguisticScaleItem("VL", "Very Low Influence", 0.00, 0.00, 0.25),
     LinguisticScaleItem("LI", "Low Influence", 0.00, 0.25, 0.50),
-    LinguisticScaleItem("I", "Influence", 0.25, 0.50, 0.75),
+    LinguisticScaleItem("I", "Moderate Influence", 0.25, 0.50, 0.75),
     LinguisticScaleItem("HI", "High Influence", 0.50, 0.75, 1.00),
     LinguisticScaleItem("VH", "Very High Influence", 0.75, 1.00, 1.00),
 )
@@ -69,11 +69,15 @@ SCALE_BY_CODE: Final[Mapping[str, LinguisticScaleItem]] = {
     item.code: item for item in SCALE_ITEMS
 }
 SCALE_CODES: Final[tuple[str, ...]] = tuple(SCALE_BY_CODE)
+CANNOT_ASSESS_VALUE: Final[str] = "Cannot Assess"
+RESPONSE_OPTIONS: Final[tuple[str, ...]] = SCALE_CODES + (CANNOT_ASSESS_VALUE,)
 
 MATRIX_SIZE: Final[int] = len(FACTOR_CODES)
 TOTAL_CELLS: Final[int] = MATRIX_SIZE * MATRIX_SIZE
 DIAGONAL_CELLS: Final[int] = MATRIX_SIZE
 REQUIRED_COMPARISONS: Final[int] = TOTAL_CELLS - DIAGONAL_CELLS
+QUESTIONNAIRE_SET_COUNT: Final[int] = 7
+MIN_EVALUATIONS_DEFAULT: Final[int] = 3
 
 APP_TITLE: Final[str] = "Fuzzy DEMATEL Expert Evaluation Platform"
 APP_ICON: Final[str] = "∿"

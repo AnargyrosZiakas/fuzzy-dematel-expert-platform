@@ -2,7 +2,7 @@
 
 The wording in this module was transcribed from the supplied research workbook.
 Keeping it separate from page rendering makes future text-only revisions safe and
-easy to review without changing validation, persistence, or matrix behaviour.
+easy to review without changing validation, persistence, or questionnaire behaviour.
 """
 
 from __future__ import annotations
@@ -97,10 +97,9 @@ EVALUATION_INSTRUCTIONS: Final[tuple[str, ...]] = (
         "direction must be evaluated separately."
     ),
     (
-        "In the matrix, please assess how each factor listed vertically on the left "
-        "influences each factor shown horizontally across the top. The shaded "
-        "diagonal cells represent a factor’s influence on itself and are therefore "
-        "not applicable."
+        "In the online questionnaire, each screen presents one source variable and "
+        "one target variable from your assigned relationship set. Self-influence "
+        "relationships are excluded and are therefore not applicable."
     ),
     (
         "There are no right or wrong answers. Please select the response that most "
