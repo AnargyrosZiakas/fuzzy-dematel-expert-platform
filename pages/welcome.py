@@ -6,29 +6,36 @@ import streamlit as st
 
 from components.layout import navigation_buttons, page_header
 from config import MATRIX_SIZE, REQUIRED_COMPARISONS
+from research_content import (
+    DOCTORAL_RESEARCH_TITLE,
+    EXPECTED_COMPLETION_TIME,
+    INSTITUTION_LINE,
+)
 
 
 def render() -> None:
     """Render the study welcome and instrument overview."""
 
     page_header(
-        "Expert evaluation · Fuzzy DEMATEL",
-        "Map influence. Reveal structure.",
+        INSTITUTION_LINE,
+        "Fuzzy DEMATEL Expert Evaluation",
         (
-            "Thank you for contributing your expert judgment to this PhD research. "
-            "This instrument records the directed influence between every pair of "
-            "study factors."
+            "You are kindly invited to contribute your professional judgement to "
+            "this doctoral research."
         ),
     )
     st.markdown(
-        """
+        f"""
         <div class="hero-card">
-          <h3>A complete scientific influence matrix</h3>
-          <p>You will assess one precise question throughout the instrument:</p>
+          <h3>Invitation to participate</h3>
+          <p>This expert evaluation forms part of the doctoral research entitled:</p>
+          <p class="study-title">“{DOCTORAL_RESEARCH_TITLE}”</p>
+          <p>The questionnaire uses a complete scientific influence matrix. You
+          will assess one precise question throughout the instrument:</p>
           <div class="orientation-card">How much does the <strong>ROW factor</strong>
           influence the <strong>COLUMN factor</strong>?</div>
           <p>Your responses are directional: C1 → C2 and C2 → C1 are separate
-          judgments. No off-diagonal comparison is optional.</p>
+          judgements. No off-diagonal comparison is optional.</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -46,8 +53,8 @@ def render() -> None:
         unsafe_allow_html=True,
     )
     third.markdown(
-        "<div class='metric-number'>5</div>"
-        "<div class='metric-caption'>linguistic influence levels</div>",
+        "<div class='metric-number'>≈10 min</div>"
+        f"<div class='metric-caption'>{EXPECTED_COMPLETION_TIME}</div>",
         unsafe_allow_html=True,
     )
     navigation_buttons(

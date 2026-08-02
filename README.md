@@ -28,6 +28,7 @@ enforce the same contract.
 ```text
 app.py                    Streamlit entry point and guarded page router
 config.py                 Fixed factors, linguistic scale, research settings
+research_content.py       Participant-facing wording from the approved workbook
 models.py                 Typed domain records
 validation.py             Expert code and 306-comparison validation
 database.py               Write-only Supabase persistence adapter
@@ -43,7 +44,7 @@ pages/
   expert_code.py
   matrix.py
   submit.py
-data/factors.csv          Ordered factor tooltip catalogue
+data/factors.csv          Ordered dimensions, criteria, and tooltip definitions
 sql/schema.sql            Supabase table, constraints, trigger, and RLS
 tests/                    Validation, persistence, and export round trips
 ```
@@ -51,24 +52,24 @@ tests/                    Validation, persistence, and export round trips
 The future mathematical engine can be implemented inside `fuzzy_dematel.py`
 without changing either the database table or current exports.
 
-## Research configuration required before deployment
+## Research text configuration
 
-The factor codes were supplied, but their scientific definitions were not.
-`data/factors.csv` therefore contains explicit, code-specific placeholders.
-Replace every `full_definition` with the verbatim definition approved for the
-study. The order and the `factor_code` values must not change.
+The study title, invitation, method instructions, consent statement, researcher
+details, and closing message are centralized in `research_content.py`. The 18
+approved criterion names and definitions are stored in `data/factors.csv`. Text
+can be revised there without changing matrix validation, database storage, or
+export logic. The order and `factor_code` values must not change.
 
-Also replace the consent metadata through environment variables or Streamlit
-Cloud settings:
+These metadata values can optionally be overridden through environment variables
+or Streamlit Cloud settings:
 
 - `STUDY_TITLE`
 - `RESEARCH_DESCRIPTION`
 - `RESEARCHER_NAME`
 - `RESEARCH_CONTACT_EMAIL`
-- `ETHICS_REFERENCE`
 
-The consent copy is a technical template, not legal or ethics-board approval.
-Have the final wording reviewed under the study's approved protocol.
+Any participant-facing revision should remain consistent with the study's
+approved research and data-management protocol.
 
 ## Local setup (Python 3.12)
 
@@ -144,10 +145,9 @@ calculations are intentionally not implemented.
 3. Paste the contents of `.streamlit/secrets.toml` into the app's encrypted
    Secrets settings.
 4. Add the study metadata values to the app environment.
-5. Confirm the factor definitions and ethics-approved consent wording.
+5. Confirm the factor definitions and approved consent wording.
 6. Submit one disposable pilot matrix and verify exactly 324 rows in Supabase.
 
 For live data collection, keep the repository private, restrict Supabase
 dashboard membership, define a retention plan, and document backups under the
 research data-management protocol.
-

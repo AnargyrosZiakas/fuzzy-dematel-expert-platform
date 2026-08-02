@@ -10,6 +10,12 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Final
 
+from research_content import (
+    CONTACT_EMAIL,
+    DOCTORAL_RESEARCH_TITLE,
+    RESEARCHER_NAME,
+)
+
 BASE_DIR: Final[Path] = Path(__file__).resolve().parent
 FACTOR_DEFINITIONS_PATH: Final[Path] = BASE_DIR / "data" / "factors.csv"
 
@@ -83,56 +89,87 @@ class ResearchSettings:
     research_description: str
     researcher_name: str
     contact_email: str
-    ethics_reference: str
 
     @classmethod
     def from_environment(cls) -> ResearchSettings:
-        """Build settings from environment variables with safe neutral defaults."""
+        """Build settings with workbook-approved defaults and optional overrides."""
 
         return cls(
-            study_title=os.getenv("STUDY_TITLE", APP_TITLE),
+            study_title=os.getenv("STUDY_TITLE", DOCTORAL_RESEARCH_TITLE),
             research_description=os.getenv(
                 "RESEARCH_DESCRIPTION",
                 (
-                    "This study gathers structured expert judgments about the "
-                    "direction and strength of influence among 18 research factors. "
-                    "Responses will be analysed with the Fuzzy DEMATEL methodology."
+                    "This questionnaire examines causal relationships among "
+                    "cultural, economic and strategic factors associated with "
+                    "sustainable airline strategy using Fuzzy DEMATEL."
                 ),
             ),
-            researcher_name=os.getenv(
-                "RESEARCHER_NAME", "PhD Research Team"
-            ),
-            contact_email=os.getenv(
-                "RESEARCH_CONTACT_EMAIL", "research-contact@example.edu"
-            ),
-            ethics_reference=os.getenv(
-                "ETHICS_REFERENCE", "Configure the approved ethics reference"
-            ),
+            researcher_name=os.getenv("RESEARCHER_NAME", RESEARCHER_NAME),
+            contact_email=os.getenv("RESEARCH_CONTACT_EMAIL", CONTACT_EMAIL),
         )
 
 
-@lru_cache(maxsize=1)
-def load_factor_definitions() -> dict[str, str]:
-    """Load and strictly validate the fixed factor-definition catalogue."""
+@dataclass(frozen=True, slots=True)
+class FactorDefinition:
+    """One factor's dimension, criterion name, and operational definition."""
 
+    code: str
+    dimension: str
+    criterion: str
+    definition: str
+
+    @property
+    def tooltip(self) -> str:
+        """Return the complete matrix tooltip text."""
+
+        return f"{self.criterion} — {self.definition}"
+
+
+@lru_cache(maxsize=1)
+def load_factor_catalogue() -> tuple[FactorDefinition, ...]:
+    """Load and strictly validate the fixed factor catalogue."""
+
+    expected_fields = [
+        "factor_code",
+        "dimension",
+        "criterion",
+        "full_definition",
+    ]
     with FACTOR_DEFINITIONS_PATH.open(encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
-        if reader.fieldnames != ["factor_code", "full_definition"]:
+        if reader.fieldnames != expected_fields:
             raise ValueError(
                 "data/factors.csv must contain exactly the columns "
-                "factor_code,full_definition."
+                + ",".join(expected_fields)
+                + "."
             )
-        definitions = {
-            row["factor_code"].strip(): row["full_definition"].strip()
+        catalogue = tuple(
+            FactorDefinition(
+                code=row["factor_code"].strip(),
+                dimension=row["dimension"].strip(),
+                criterion=row["criterion"].strip(),
+                definition=row["full_definition"].strip(),
+            )
             for row in reader
-        }
+        )
 
-    if tuple(definitions) != FACTOR_CODES:
+    if tuple(item.code for item in catalogue) != FACTOR_CODES:
         raise ValueError(
             "data/factors.csv must contain each configured factor exactly once "
             "and in instrument order."
         )
-    if any(not definition for definition in definitions.values()):
-        raise ValueError("Every factor requires a non-empty full definition.")
-    return definitions
+    if any(
+        not item.dimension or not item.criterion or not item.definition
+        for item in catalogue
+    ):
+        raise ValueError(
+            "Every factor requires a dimension, criterion, and definition."
+        )
+    return catalogue
 
+
+@lru_cache(maxsize=1)
+def load_factor_definitions() -> dict[str, str]:
+    """Return complete criterion-and-definition text for matrix tooltips."""
+
+    return {item.code: item.tooltip for item in load_factor_catalogue()}

@@ -65,6 +65,10 @@ def inject_global_styles() -> None:
             box-shadow: 0 10px 30px rgba(16, 42, 67, 0.06);
         }
         .hero-card { border-top: 4px solid var(--teal); }
+        .study-title {
+            color: var(--navy); font-size: 1.08rem; font-weight: 700;
+            line-height: 1.55;
+        }
         .orientation-card {
             background: var(--navy); color: #FFFFFF; border-radius: 16px;
             padding: 1rem 1.2rem; text-align: center; margin: 1rem 0;
@@ -81,6 +85,35 @@ def inject_global_styles() -> None:
         .privacy-note {
             background: #FFF8E8; border-left: 4px solid var(--gold);
             border-radius: 8px; padding: 0.8rem 1rem;
+        }
+        .table-scroll { overflow-x: auto; margin: 0.75rem 0 1rem; }
+        .research-table {
+            width: 100%; border-collapse: collapse; background: #FFFFFF;
+            border-radius: 12px; overflow: hidden;
+        }
+        .research-table th {
+            background: var(--teal); color: #FFFFFF; text-align: left;
+            padding: 0.7rem; white-space: nowrap;
+        }
+        .research-table td {
+            border-bottom: 1px solid var(--line); padding: 0.7rem;
+            vertical-align: top;
+        }
+        .factor-catalogue {
+            background: #FFFFFF; border: 1px solid var(--line);
+            border-radius: 14px; overflow: hidden; margin-bottom: 1.25rem;
+        }
+        .factor-definition-row {
+            display: grid; grid-template-columns: minmax(260px, 0.8fr) 1.4fr;
+            gap: 1.2rem; padding: 0.9rem 1rem;
+            border-bottom: 1px solid var(--line); line-height: 1.5;
+        }
+        .factor-definition-row:last-child { border-bottom: 0; }
+        .factor-badge {
+            display: inline-block; min-width: 2.3rem; margin-right: 0.55rem;
+            padding: 0.18rem 0.35rem; border-radius: 7px;
+            background: var(--teal-soft); color: var(--teal);
+            font-weight: 800; text-align: center;
         }
         .step-list { margin: 1.2rem 0; }
         .step-item {
@@ -131,6 +164,7 @@ def inject_global_styles() -> None:
         @media (max-width: 760px) {
             .block-container { padding-top: 1rem; }
             .hero-card, .content-card { padding: 1rem; }
+            .factor-definition-row { grid-template-columns: 1fr; gap: 0.5rem; }
         }
         </style>
         """,
@@ -174,12 +208,21 @@ def render_sidebar() -> None:
 
 
 def go_to_page(page_index: int) -> None:
-    """Navigate to a valid step and rerun the application."""
+    """Set the next valid step from a Streamlit button callback."""
 
     st.session_state["current_page"] = min(
         len(PAGE_LABELS) - 1, max(0, page_index)
     )
-    st.rerun()
+
+
+def _go_to_page_after_validation(
+    page_index: int,
+    validator: Callable[[], bool] | None,
+) -> None:
+    """Move forward only when an optional page validator succeeds."""
+
+    if validator is None or validator():
+        go_to_page(page_index)
 
 
 def navigation_buttons(
@@ -200,20 +243,25 @@ def navigation_buttons(
     st.write("")
     left, _, right = st.columns([1, 3, 1])
     with left:
-        if previous_page is not None and st.button(
-            "← Back", key=f"{key_prefix}_back", use_container_width=True
-        ):
-            go_to_page(previous_page)
+        if previous_page is not None:
+            st.button(
+                "← Back",
+                key=f"{key_prefix}_back",
+                on_click=go_to_page,
+                args=(previous_page,),
+                use_container_width=True,
+            )
     with right:
-        if next_page is not None and st.button(
-            next_label,
-            key=f"{key_prefix}_next",
-            type="primary",
-            disabled=next_disabled,
-            use_container_width=True,
-        ):
-            if on_next is None or on_next():
-                go_to_page(next_page)
+        if next_page is not None:
+            st.button(
+                next_label,
+                key=f"{key_prefix}_next",
+                type="primary",
+                disabled=next_disabled,
+                on_click=_go_to_page_after_validation,
+                args=(next_page, on_next),
+                use_container_width=True,
+            )
 
 
 def page_header(eyebrow: str, title: str, description: str) -> None:

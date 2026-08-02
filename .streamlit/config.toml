@@ -10,7 +10,9 @@ font = "sans-serif"
 showSidebarNavigation = false
 toolbarMode = "minimal"
 
+[browser]
+gatherUsageStats = false
+
 [server]
 headless = true
 runOnSave = true
-

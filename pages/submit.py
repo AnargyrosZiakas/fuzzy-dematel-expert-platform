@@ -18,6 +18,7 @@ from database import (
 )
 from export import generate_exports
 from models import ResponseRecord
+from research_content import CONTACT_EMAIL, THANK_YOU_MESSAGE
 from validation import (
     build_response_records,
     validate_expert_code,
@@ -144,6 +145,11 @@ def render() -> None:
             return
         submission_id = records[0]["submission_id"]
         st.success("Your expert evaluation has been submitted successfully.")
+        st.markdown("## Thank you for your contribution")
+        st.markdown(
+            f"<div class='content-card'>{THANK_YOU_MESSAGE}</div>",
+            unsafe_allow_html=True,
+        )
         st.markdown(
             f"<div class='content-card'><strong>Submission receipt</strong><br>"
             f"UUID: <code>{submission_id}</code><br>"
@@ -152,6 +158,10 @@ def render() -> None:
         )
         st.info(
             "Keep the UUID if the study protocol permits later withdrawal or queries."
+        )
+        st.caption(
+            f"For any questions regarding the research: Anargyros Ziakas, "
+            f"PhD Candidate, University of the Aegean · {CONTACT_EMAIL}"
         )
         _render_downloads(records)
         return
@@ -188,8 +198,12 @@ def render() -> None:
     st.write("")
     back_column, _, submit_column = st.columns([1, 3, 1.4])
     with back_column:
-        if st.button("← Back to matrix", use_container_width=True):
-            go_to_page(4)
+        st.button(
+            "← Back to matrix",
+            on_click=go_to_page,
+            args=(4,),
+            use_container_width=True,
+        )
     with submit_column:
         st.button(
             "Submit complete matrix",

@@ -11,7 +11,7 @@ import pandas as pd
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from config import FACTOR_CODES, load_factor_definitions
+from config import FACTOR_CODES, load_factor_catalogue
 from models import ResponseRecord
 
 LONG_COLUMNS = [
@@ -80,12 +80,14 @@ def records_to_wide_dataframe(
 
 
 def _definitions_dataframe() -> pd.DataFrame:
-    definitions = load_factor_definitions()
-    return pd.DataFrame(
+    return pd.DataFrame.from_records(
         {
-            "factor_code": FACTOR_CODES,
-            "full_definition": [definitions[code] for code in FACTOR_CODES],
+            "factor_code": item.code,
+            "dimension": item.dimension,
+            "criterion": item.criterion,
+            "full_definition": item.definition,
         }
+        for item in load_factor_catalogue()
     )
 
 
@@ -193,4 +195,3 @@ def generate_exports(records: Sequence[ResponseRecord]) -> ExportBundle:
         long_excel=_long_excel_bytes(long_frame),
         wide_excel=_wide_excel_bytes(long_frame, records),
     )
-

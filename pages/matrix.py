@@ -7,6 +7,7 @@ import streamlit as st
 from components.layout import navigation_buttons, page_header
 from components.matrix_grid import render_matrix_grid, render_scale_legend
 from config import REQUIRED_COMPARISONS
+from research_content import DIRECT_INFLUENCE_REMINDER
 from validation import validate_expert_code, validate_matrix
 
 
@@ -49,6 +50,7 @@ def render() -> None:
         "The 18 diagonal cells are disabled and fixed at 0. Scroll "
         "horizontally if needed."
     )
+    st.info(DIRECT_INFLUENCE_REMINDER)
     render_matrix_grid()
 
     status = validate_matrix(st.session_state["judgments"])
