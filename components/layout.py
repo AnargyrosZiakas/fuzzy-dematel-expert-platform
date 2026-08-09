@@ -6,16 +6,17 @@ from collections.abc import Callable
 
 import streamlit as st
 
-from config import APP_TITLE
-from validation import validate_assigned_responses
+from config import APP_TITLE, SCALE_ITEMS
+from hierarchical_questionnaire import matrix_definitions
+from validation import validate_hierarchical_questionnaire
 
 PAGE_LABELS = (
     "Welcome",
     "Research",
     "Consent",
     "Expert code",
-    "Evaluation",
-    "Submit",
+    "Four-part evaluation",
+    "Review & submit",
 )
 
 
@@ -33,6 +34,9 @@ def initialize_session_state() -> None:
         "assignment": None,
         "assigned_set_id": None,
         "question_index": 0,
+        "questionnaire": None,
+        "current_matrix_index": 0,
+        "active_relationship_key": None,
         "autosave_error": None,
         "resume_error": None,
         "progress_restore_attempted": False,
@@ -258,6 +262,126 @@ def inject_global_styles() -> None:
                 flex: 1 1 calc(50% - 0.55rem); justify-content: center;
             }
         }
+        .matrix-step-card {
+            align-items: center; background: #FFFFFF; border: 1px solid var(--line);
+            border-radius: 12px; display: flex; justify-content: space-between;
+            margin-bottom: 0.85rem; padding: 0.7rem 0.9rem;
+        }
+        .matrix-step-card span { color: #526D82; }
+        .matrix-orientation { margin-bottom: 0.65rem; }
+        .orientation-roles {
+            display: flex; gap: 0.75rem; justify-content: center; margin-top: 0.7rem;
+        }
+        .orientation-roles span {
+            background: rgba(255,255,255,.13); border-radius: 999px;
+            font-size: .78rem; font-weight: 800; padding: .28rem .65rem;
+        }
+        .scale-reference { margin: .4rem 0 .8rem; }
+        .criterion-reference {
+            align-items: flex-start; border-bottom: 1px solid var(--line);
+            display: grid; gap: .75rem; grid-template-columns: auto 1fr;
+            line-height: 1.45; padding: .7rem .15rem;
+        }
+        .criterion-reference:last-child { border-bottom: 0; }
+        .criterion-reference span:last-child { color: #526D82; }
+        div[class*="st-key-relationship_panel_"] {
+            background: rgba(247,249,252,.97); border: 1px solid var(--line);
+            border-radius: 16px; padding: .7rem .85rem .2rem;
+            position: sticky; top: .5rem; z-index: 20;
+            box-shadow: 0 9px 26px rgba(16,42,67,.10);
+        }
+        .active-relationship-card {
+            display: grid; gap: .35rem; grid-template-columns: auto 1fr auto;
+            align-items: center;
+        }
+        .active-kicker {
+            color: var(--teal); font-size: .72rem; font-weight: 800;
+            letter-spacing: .09em; text-transform: uppercase;
+        }
+        .active-code {
+            color: var(--navy); font-size: 1.35rem; font-weight: 850;
+            text-align: center;
+        }
+        .active-names {
+            display: flex; flex-direction: column; font-size: .84rem;
+            grid-column: 1 / -1; text-align: center;
+        }
+        .active-names span { color: var(--teal); font-size: .76rem; font-weight: 750; }
+        .active-selection {
+            color: #526D82; font-size: .82rem; text-align: right;
+        }
+        .active-selection strong { color: var(--navy); }
+        div[class*="st-key-scale_selector_"] [data-testid="stRadio"]
+        [role="radiogroup"] { display: flex; flex-wrap: wrap; gap: .45rem; }
+        div[class*="st-key-scale_selector_"] [data-testid="stRadio"] label {
+            background: #FFFFFF; border: 2px solid var(--line); border-radius: 9px;
+            min-height: 42px; padding: .4rem .62rem;
+        }
+        div[class*="st-key-scale_selector_"] [data-testid="stRadio"] label p {
+            color: var(--ink); font-size: 14px; font-weight: 700; opacity: 1;
+        }
+        div[class*="st-key-scale_selector_"] [data-testid="stRadio"]
+        label:has(input:checked) {
+            background: var(--teal-soft); border-color: var(--teal);
+        }
+        div[class*="st-key-matrix_grid_"] {
+            background: #FFFFFF; border: 1px solid var(--line); border-radius: 14px;
+            box-shadow: 0 7px 22px rgba(16,42,67,.05); overflow-x: auto;
+            padding: .75rem;
+        }
+        .axis-corner, .matrix-axis-label, .matrix-row-label {
+            align-items: center; background: #F0F4F8; border: 1px solid var(--line);
+            border-radius: 9px; color: var(--navy); display: flex;
+            justify-content: center; min-height: 44px; text-align: center;
+        }
+        .axis-corner { flex-direction: column; font-size: .68rem; }
+        .matrix-axis-label, .matrix-row-label { font-size: .95rem; font-weight: 800; }
+        .matrix-axis-label { flex-direction: column; cursor: help; }
+        .matrix-axis-label small, .matrix-row-label small {
+            color: #627D98; display: block; font-size: .57rem; font-weight: 750;
+        }
+        .matrix-row-label {
+            align-items: flex-start; flex-direction: column; padding: 0 .6rem;
+        }
+        .active-axis { background: #DDF3EF; border-color: var(--teal); }
+        div[class*="st-key-cell_"] button,
+        div[class*="st-key-diagonal_"] button {
+            font-size: 15px; font-weight: 800; min-height: 44px;
+            padding: .25rem .3rem; text-align: center;
+        }
+        div[class*="st-key-cell_"] button[kind="secondary"] {
+            background: #FFFFFF; border: 2px dashed #9FB3C8; color: #526D82;
+        }
+        div[class*="st-key-cell_"] button[kind="primary"] {
+            background: var(--teal-soft); border: 2px solid var(--teal);
+            color: #0B4F49; opacity: 1;
+        }
+        div[class*="st-key-diagonal_"] button:disabled {
+            background: #E8EDF2; border-color: #CBD5DF; color: #627D98;
+            opacity: 1;
+        }
+        div[class*="st-key-review_section_"] {
+            background: #FFFFFF; border: 1px solid var(--line); border-radius: 12px;
+            margin-bottom: .55rem; padding: .55rem .7rem;
+        }
+        .sidebar-scale {
+            color: #526D82; font-size: .75rem; line-height: 1.65;
+        }
+        @media (max-width: 760px) {
+            div[class*="st-key-relationship_panel_"] { position: static; }
+            .active-relationship-card { grid-template-columns: 1fr; }
+            .active-selection, .active-code { text-align: left; }
+            .orientation-roles { align-items: center; flex-direction: column; }
+            div[class*="st-key-matrix_grid_"]
+            [data-testid="stHorizontalBlock"] { flex-wrap: nowrap; }
+            div[class*="st-key-matrix_grid_"]
+            [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+                min-width: 0;
+            }
+            div[class*="st-key-scale_selector_"] [data-testid="stRadio"] label {
+                flex: 1 1 calc(50% - .45rem); justify-content: center;
+            }
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -298,17 +422,27 @@ def render_sidebar(*, admin_mode: bool = False) -> None:
             )
         st.markdown("</div>", unsafe_allow_html=True)
         st.divider()
-        set_id = st.session_state.get("assigned_set_id")
-        if set_id:
-            status = validate_assigned_responses(
-                int(set_id), st.session_state["judgments"]
+        questionnaire = st.session_state.get("questionnaire")
+        if questionnaire:
+            status = validate_hierarchical_questionnaire(
+                st.session_state["judgments"]
             )
-            st.caption(f"Questionnaire set {set_id} progress")
+            matrix_index = int(st.session_state.get("current_matrix_index", 0))
+            matrix = matrix_definitions()[matrix_index]
+            st.caption(f"Current section: {matrix.short_label}")
             st.progress(status.completion_ratio)
             st.markdown(f"**{status.completed} / {status.required}** evaluations")
             st.caption("Each selection is saved automatically.")
         else:
-            st.caption("Your balanced questionnaire set is assigned after consent.")
+            st.caption("Your four-stage evaluation begins after consent.")
+        st.markdown(
+            "<div class='sidebar-scale'><strong>Influence scale</strong><br>"
+            + "<br>".join(
+                f"{item.code} — {item.label}" for item in SCALE_ITEMS
+            )
+            + "</div>",
+            unsafe_allow_html=True,
+        )
         st.divider()
         st.markdown(
             "<a class='admin-link' href='?admin=1'>Administrator access</a>",
