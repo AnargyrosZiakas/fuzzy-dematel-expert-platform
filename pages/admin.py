@@ -1,4 +1,4 @@
-"""Password-protected administrator coverage dashboard and exports."""
+"""Password-protected dashboard and exports for the hierarchical study."""
 
 from __future__ import annotations
 
@@ -9,10 +9,12 @@ import streamlit as st
 from components.layout import page_header
 from database import AssignmentError, DatabaseConfigurationError
 from export import (
-    completed_responses_dataframe,
+    completed_hierarchical_responses_dataframe,
     generate_administrator_exports,
-    relationship_coverage_dataframe,
-    set_summary_dataframe,
+    generate_hierarchical_administrator_exports,
+    hierarchical_coverage_dataframe,
+    hierarchical_matrix_summary_dataframe,
+    hierarchical_respondent_summary_dataframe,
 )
 from services import (
     administrator_password_is_configured,
@@ -62,7 +64,7 @@ def _render_login() -> None:
 
 
 def render() -> None:
-    """Render secure coverage metrics and combined researcher downloads."""
+    """Render questionnaire status, 104-pair coverage, and combined exports."""
 
     if not st.session_state.get("admin_authenticated"):
         _render_login()
@@ -70,18 +72,18 @@ def render() -> None:
 
     page_header(
         "Restricted research administration",
-        "Questionnaire coverage dashboard",
+        "Hierarchical questionnaire dashboard",
         (
-            "Monitor balanced-set completion and relationship-level coverage. "
-            "Partial respondents are excluded from analysis counts and exports."
+            "Monitor completed respondents and relationship coverage across the "
+            "four fixed matrices. Partial respondents are excluded from exports."
         ),
     )
     st.button("Sign out", on_click=_logout)
 
     try:
-        with st.spinner("Loading research coverage…"):
+        with st.spinner("Loading research data…"):
             repository = get_repository()
-            assignments = repository.fetch_all_assignments()
+            questionnaires = repository.fetch_all_questionnaires()
             responses = repository.fetch_all_responses()
     except (DatabaseConfigurationError, AssignmentError) as exc:
         LOGGER.warning("Administrator dashboard load failed: %s", exc)
@@ -89,57 +91,51 @@ def render() -> None:
         return
 
     threshold = minimum_evaluations()
-    completed = completed_responses_dataframe(responses, assignments)
-    coverage = relationship_coverage_dataframe(
-        completed,
-        minimum_evaluations=threshold,
+    completed = completed_hierarchical_responses_dataframe(
+        responses, questionnaires
     )
-    set_summary = set_summary_dataframe(assignments)
+    coverage = hierarchical_coverage_dataframe(
+        completed, minimum_evaluations=threshold
+    )
+    respondent_summary = hierarchical_respondent_summary_dataframe(questionnaires)
+    matrix_summary = hierarchical_matrix_summary_dataframe(completed)
     insufficient = coverage[~coverage["enough_evaluations"]]
-    completed_respondents = int(
-        (set_summary["completed_respondents"]).sum()
+    completed_respondents = sum(
+        questionnaire["status"] == "completed"
+        for questionnaire in questionnaires
     )
 
     first, second, third, fourth = st.columns(4)
     first.metric("Completed respondents", completed_respondents)
     second.metric("Completed evaluations", len(completed))
-    third.metric("Covered relationships", int((coverage["evaluation_count"] > 0).sum()))
-    fourth.metric(
-        f"Below {threshold} usable evaluations",
-        len(insufficient),
+    third.metric(
+        "Relationships evaluated",
+        int((coverage["evaluation_count"] > 0).sum()),
     )
+    fourth.metric(f"Below {threshold} evaluations", len(insufficient))
 
-    st.subheader("Completed responses per set")
-    st.bar_chart(
-        set_summary.set_index("set_id")["completed_respondents"],
-        x_label="Questionnaire set",
-        y_label="Completed respondents",
-    )
-    st.dataframe(
-        set_summary,
-        hide_index=True,
-        use_container_width=True,
-    )
+    st.subheader("Respondent status")
+    if respondent_summary.empty:
+        st.info("No hierarchical questionnaire sessions have been started yet.")
+    else:
+        status_counts = respondent_summary["status"].value_counts()
+        st.bar_chart(status_counts)
+        st.dataframe(
+            respondent_summary,
+            hide_index=True,
+            use_container_width=True,
+        )
+
+    st.subheader("Evaluations collected by matrix")
+    st.dataframe(matrix_summary, hide_index=True, use_container_width=True)
 
     st.subheader("Directed-relationship coverage")
     st.caption(
-        "Usable counts exclude ‘Cannot Assess’. Diagonal relationships are absent "
-        "by design."
+        "Each row is one allowed source → target relationship. Diagonal and "
+        "cross-dimensional criterion pairs are absent by scientific design."
     )
     st.dataframe(
-        coverage[
-            [
-                "set_id",
-                "source_variable_code",
-                "source_variable_name",
-                "target_variable_code",
-                "target_variable_name",
-                "evaluation_count",
-                "cannot_assess_count",
-                "usable_evaluation_count",
-                "enough_evaluations",
-            ]
-        ],
+        coverage,
         hide_index=True,
         use_container_width=True,
         height=520,
@@ -148,20 +144,20 @@ def render() -> None:
     st.subheader("Relationships needing more evaluations")
     if insufficient.empty:
         st.success(
-            f"Every directed relationship has at least {threshold} usable evaluations."
+            f"Every relationship has at least {threshold} completed evaluations."
         )
     else:
         st.warning(
-            f"{len(insufficient)} relationships have fewer than {threshold} usable "
-            "evaluations."
+            f"{len(insufficient)} of 104 relationships have fewer than "
+            f"{threshold} completed evaluations."
         )
         st.dataframe(
             insufficient[
                 [
-                    "set_id",
-                    "source_variable_code",
-                    "target_variable_code",
-                    "usable_evaluation_count",
+                    "matrix_id",
+                    "source_code",
+                    "target_code",
+                    "evaluation_count",
                     "minimum_required",
                 ]
             ],
@@ -170,31 +166,75 @@ def render() -> None:
             height=360,
         )
 
-    exports = generate_administrator_exports(
+    exports = generate_hierarchical_administrator_exports(
         responses,
-        assignments,
+        questionnaires,
         minimum_evaluations=threshold,
     )
-    st.subheader("Combined research export")
+    st.subheader("Hierarchical research export")
     st.caption(
-        "The long-form response file plus the relationship map can reconstruct the "
-        "complete 18×18 direct-relation design. No mathematical aggregation is "
-        "performed."
+        "The raw long-form rows preserve respondent ID, matrix, direction, "
+        "linguistic value, TFN and timestamp. They reconstruct the 6×6, 4×4, "
+        "8×8 and 3×3 matrices without inventing missing answers."
     )
     csv_column, excel_column = st.columns(2)
     with csv_column:
         st.download_button(
-            "Download all completed responses (CSV)",
+            "Download completed responses (CSV)",
             exports.responses_csv,
-            file_name="fuzzy_dematel_all_responses.csv",
+            file_name="fuzzy_dematel_hierarchical_responses.csv",
             mime="text/csv",
             use_container_width=True,
         )
     with excel_column:
         st.download_button(
-            "Download complete research workbook (Excel)",
+            "Download complete workbook (Excel)",
             exports.complete_excel,
-            file_name="fuzzy_dematel_complete_dataset.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            file_name="fuzzy_dematel_hierarchical_dataset.xlsx",
+            mime=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
             use_container_width=True,
         )
+
+    with st.expander("Historical seven-set data", expanded=False):
+        st.caption(
+            "Records collected under the earlier pilot design remain separate and "
+            "available here; they are never mixed with hierarchical responses."
+        )
+        try:
+            legacy_assignments = repository.fetch_legacy_assignments()
+            legacy_responses = repository.fetch_legacy_responses()
+            legacy_exports = generate_administrator_exports(
+                legacy_responses,
+                legacy_assignments,
+                minimum_evaluations=threshold,
+            )
+        except Exception as exc:  # pragma: no cover - remote legacy path
+            LOGGER.warning("Historical export load failed: %s", exc)
+            st.warning("Historical data could not be loaded right now.")
+        else:
+            if not legacy_assignments:
+                st.info("No historical seven-set sessions were found.")
+            else:
+                legacy_csv, legacy_excel = st.columns(2)
+                with legacy_csv:
+                    st.download_button(
+                        "Download historical CSV",
+                        legacy_exports.responses_csv,
+                        file_name="fuzzy_dematel_historical_sets.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                    )
+                with legacy_excel:
+                    st.download_button(
+                        "Download historical Excel",
+                        legacy_exports.complete_excel,
+                        file_name="fuzzy_dematel_historical_sets.xlsx",
+                        mime=(
+                            "application/vnd.openxmlformats-officedocument."
+                            "spreadsheetml.sheet"
+                        ),
+                        use_container_width=True,
+                    )

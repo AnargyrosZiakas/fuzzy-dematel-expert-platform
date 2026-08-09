@@ -1,4 +1,4 @@
-"""Research description, method, scale, and factor-catalogue step."""
+"""Research description, instructions, scale, and criteria reference."""
 
 from __future__ import annotations
 
@@ -7,98 +7,62 @@ from html import escape
 import streamlit as st
 
 from components.layout import navigation_buttons, page_header
-from config import (
-    CANNOT_ASSESS_VALUE,
-    SCALE_ITEMS,
-    ResearchSettings,
-    load_factor_catalogue,
-)
+from config import SCALE_ITEMS, ResearchSettings, load_factor_catalogue
 from research_content import (
     CONTACT_EMAIL,
     DIRECT_INFLUENCE_REMINDER,
     DOCTORAL_RESEARCH_TITLE,
-    EVALUATION_INSTRUCTIONS,
+    EXPECTED_COMPLETION_TIME,
     INVITATION_PARAGRAPHS,
     METHOD_PURPOSE_PARAGRAPHS,
     RESEARCHER_NAME,
     RESEARCHER_ROLE,
 )
 
-SCALE_EXPLANATIONS = (
-    "No meaningful or only a negligible direct effect.",
-    "A limited direct effect.",
-    "A noticeable and moderate direct effect.",
-    "A strong direct effect.",
-    "A very strong or decisive direct effect.",
-)
-
 
 def _paragraphs_html(paragraphs: tuple[str, ...]) -> str:
-    """Return trusted research copy as escaped HTML paragraphs."""
-
     return "".join(f"<p>{escape(paragraph)}</p>" for paragraph in paragraphs)
 
 
 def _render_scale() -> None:
-    """Render the five-level linguistic scale and exact TFN mapping."""
-
-    rows = []
-    for numerical_code, (item, explanation) in enumerate(
-        zip(SCALE_ITEMS, SCALE_EXPLANATIONS, strict=True)
-    ):
-        rows.append(
-            "<tr>"
-            f"<td>{numerical_code}</td>"
-            f"<td><strong>{item.code}</strong></td>"
-            f"<td>{escape(item.label)}</td>"
-            f"<td>{escape(explanation)}</td>"
-            f"<td>({item.lower:.2f}, {item.modal:.2f}, {item.upper:.2f})</td>"
-            "</tr>"
-        )
-    rows.append(
+    rows = "".join(
         "<tr>"
-        "<td>—</td><td>—</td>"
-        f"<td>{CANNOT_ASSESS_VALUE}</td>"
-        "<td>Use only when a defensible professional judgement cannot be made.</td>"
-        "<td>Not assigned</td>"
+        f"<td><strong>{item.code}</strong></td>"
+        f"<td>{escape(item.label)}</td>"
         "</tr>"
+        for item in SCALE_ITEMS
     )
     st.markdown(
         "<div class='table-scroll'><table class='research-table'>"
-        "<thead><tr><th>Numerical code</th><th>Acronym</th>"
-        "<th>Linguistic assessment</th><th>Explanation</th>"
-        "<th>Triangular fuzzy number (TFN)</th></tr></thead>"
-        f"<tbody>{''.join(rows)}</tbody></table></div>",
+        "<thead><tr><th>Code</th><th>Influence judgement</th></tr></thead>"
+        f"<tbody>{rows}</tbody></table></div>",
         unsafe_allow_html=True,
     )
 
 
 def _render_factor_catalogue() -> None:
-    """Render all criterion names and definitions in instrument order."""
-
     catalogue = load_factor_catalogue()
     dimensions = dict.fromkeys(item.dimension for item in catalogue)
     for dimension in dimensions:
-        st.markdown(f"#### {escape(dimension)}")
-        rows = []
-        for item in catalogue:
-            if item.dimension != dimension:
-                continue
-            rows.append(
-                "<div class='factor-definition-row'>"
-                f"<div><span class='factor-badge'>{escape(item.code)}</span>"
-                f"<strong>{escape(item.criterion)}</strong></div>"
-                f"<div>{escape(item.definition)}</div>"
-                "</div>"
+        with st.expander(str(dimension), expanded=False):
+            rows = []
+            for item in catalogue:
+                if item.dimension != dimension:
+                    continue
+                rows.append(
+                    "<div class='factor-definition-row'>"
+                    f"<div><span class='factor-badge'>{escape(item.code)}</span>"
+                    f"<strong>{escape(item.criterion)}</strong></div>"
+                    f"<div>{escape(item.definition)}</div></div>"
+                )
+            st.markdown(
+                f"<div class='factor-catalogue'>{''.join(rows)}</div>",
+                unsafe_allow_html=True,
             )
-        st.markdown(
-            f"<div class='factor-catalogue'>{''.join(rows)}</div>",
-            unsafe_allow_html=True,
-        )
 
 
 def render() -> None:
-    """Explain the study, method, evaluation procedure, and all factors."""
+    """Present the approved academic information in digestible sections."""
 
     settings = ResearchSettings.from_environment()
     page_header(
@@ -106,58 +70,86 @@ def render() -> None:
         "Research information and instructions",
         settings.research_description,
     )
-
-    invitation_intro = _paragraphs_html(INVITATION_PARAGRAPHS[:2])
-    invitation_details = _paragraphs_html(INVITATION_PARAGRAPHS[2:])
     st.markdown(
         f"""
         <div class="content-card">
-          <h3>Invitation to Participate</h3>
-          {invitation_intro}
+          <p class="eyebrow">PhD research</p>
           <p class="study-title">“{escape(DOCTORAL_RESEARCH_TITLE)}”</p>
-          {invitation_details}
-          <p>For any questions regarding the research, please contact:<br>
-          <strong>{escape(RESEARCHER_NAME)}</strong>, {escape(RESEARCHER_ROLE)}<br>
-          <a href="mailto:{escape(CONTACT_EMAIL)}">{escape(CONTACT_EMAIL)}</a></p>
-          <p>Thank you for your time and valuable contribution.</p>
+          <p><strong>{escape(RESEARCHER_NAME)}</strong><br>
+          {escape(RESEARCHER_ROLE)}<br>
+          Department of Tourism Economics and Management</p>
         </div>
         """,
         unsafe_allow_html=True,
     )
+    st.write("")
 
-    st.subheader("Purpose of the Method")
-    purpose_html = _paragraphs_html(METHOD_PURPOSE_PARAGRAPHS)
+    about_column, task_column = st.columns(2)
+    with about_column:
+        st.markdown(
+            "<div class='content-card'><h3>About the study</h3>"
+            f"{_paragraphs_html(METHOD_PURPOSE_PARAGRAPHS[:1])}"
+            "<p>The study examines causal relationships among cultural, economic "
+            "and airline strategic factors in sustainable aviation.</p></div>",
+            unsafe_allow_html=True,
+        )
+    with task_column:
+        st.markdown(
+            "<div class='content-card'><h3>What you will do</h3>"
+            "<p>Complete four matrices in sequence:</p><ol>"
+            "<li>Consumer-Cultural &amp; Behavioural</li>"
+            "<li>Economic &amp; Market</li>"
+            "<li>Airline Strategic &amp; Operational</li>"
+            "<li>Relationships Between Dimensions</li></ol>"
+            "<p>Only direct influence within each criterion group is evaluated. "
+            "Each direction is separate.</p></div>",
+            unsafe_allow_html=True,
+        )
+
+    st.subheader("How to answer")
     st.markdown(
-        f"<div class='content-card'>{purpose_html}</div>",
+        "<div class='orientation-card'>Please indicate how much the "
+        "<strong>ROW factor</strong> influences the "
+        "<strong>COLUMN factor</strong>.<div class='orientation-roles'>"
+        "<span>ROW = CAUSE</span><span>COLUMN = AFFECTED FACTOR</span>"
+        "</div></div>",
         unsafe_allow_html=True,
     )
-
-    st.subheader("How to Complete the Evaluation")
-    st.markdown(_paragraphs_html(EVALUATION_INSTRUCTIONS), unsafe_allow_html=True)
     st.markdown(
-        "<div class='orientation-card'>How much does the "
-        "<strong>source variable</strong> directly influence the "
-        "<strong>target variable</strong>?</div>",
-        unsafe_allow_html=True,
-    )
-
-    st.subheader("Evaluation Scale")
-    _render_scale()
-    st.markdown(
-        f"<div class='privacy-note'><strong>Important</strong><br>"
+        f"<div class='privacy-note'><strong>Direct influence</strong><br>"
         f"{escape(DIRECT_INFLUENCE_REMINDER)}</div>",
         unsafe_allow_html=True,
     )
 
-    st.subheader("Factors and Criteria")
+    scale_column, details_column = st.columns(2)
+    with scale_column:
+        st.markdown("### Fuzzy DEMATEL scale")
+        _render_scale()
+        st.caption(
+            "The mathematical fuzzy values are stored automatically; you only "
+            "select the linguistic judgement."
+        )
+    with details_column:
+        st.markdown(
+            "<div class='content-card'><h3>Confidentiality</h3>"
+            f"{_paragraphs_html(INVITATION_PARAGRAPHS[4:6])}"
+            f"<p>Questions: <a href='mailto:{escape(CONTACT_EMAIL)}'>"
+            f"{escape(CONTACT_EMAIL)}</a></p></div>",
+            unsafe_allow_html=True,
+        )
+        st.write("")
+        st.markdown(
+            "<div class='content-card'><h3>Estimated completion time</h3>"
+            f"<p><strong>{escape(EXPECTED_COMPLETION_TIME)}</strong></p>"
+            "<p>Progress is saved after every selection, and the four sections "
+            "can be revisited before submission.</p></div>",
+            unsafe_allow_html=True,
+        )
+
+    st.subheader("Criteria reference")
     st.caption(
-        "The complete study contains 18 factors. Each evaluation screen keeps the "
-        "source and target codes visible and shows both variables' full definitions."
+        "Definitions are also available inside every matrix through tooltips and "
+        "the section reference panel."
     )
     _render_factor_catalogue()
-
-    navigation_buttons(
-        previous_page=0,
-        next_page=2,
-        key_prefix="research",
-    )
+    navigation_buttons(previous_page=0, next_page=2, key_prefix="research")

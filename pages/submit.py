@@ -1,4 +1,4 @@
-"""Final review and atomic completion of one assigned questionnaire set."""
+"""Final review and atomic completion of the hierarchical questionnaire."""
 
 from __future__ import annotations
 
@@ -9,107 +9,105 @@ import pandas as pd
 import streamlit as st
 
 from components.layout import go_to_page, page_header
-from database import (
-    AssignmentError,
-    DatabaseConfigurationError,
-    SubmissionError,
+from config import HIERARCHICAL_REQUIRED_COMPARISONS
+from database import AssignmentError, DatabaseConfigurationError, SubmissionError
+from hierarchical_questionnaire import (
+    all_hierarchical_relationships,
+    matrix_definitions,
 )
-from questionnaire_sets import get_questionnaire_set
 from research_content import CONTACT_EMAIL, THANK_YOU_MESSAGE
 from services import get_repository
-from validation import validate_assigned_responses, validate_expert_code
+from validation import (
+    validate_expert_code,
+    validate_hierarchical_matrix,
+    validate_hierarchical_questionnaire,
+)
 
 LOGGER = logging.getLogger(__name__)
 
 
-def _complete_submission() -> None:
-    """Verify and atomically complete the respondent's assigned set."""
+def _return_to_matrix(index: int) -> None:
+    st.session_state["current_matrix_index"] = index
+    st.session_state["active_relationship_key"] = None
+    go_to_page(4)
 
-    set_id = st.session_state.get("assigned_set_id")
+
+def _complete_submission() -> None:
+    """Verify all 104 answers and complete the database session atomically."""
+
     respondent_id = st.session_state.get("respondent_id")
-    if not set_id or not respondent_id:
-        st.error("Your questionnaire assignment is unavailable.")
+    if not respondent_id or not st.session_state.get("questionnaire"):
+        st.error("Your questionnaire session is unavailable.")
         return
-    status = validate_assigned_responses(
-        int(set_id), st.session_state["judgments"]
+    status = validate_hierarchical_questionnaire(
+        st.session_state.get("judgments", {})
     )
     if not status.is_valid:
         st.error(
-            f"Submission is blocked: {len(status.missing)} assigned "
+            f"Submission is blocked: {len(status.missing)} required "
             "relationship(s) are incomplete."
         )
         return
-
     try:
         with st.spinner("Finalising your securely saved responses…"):
-            assignment = get_repository().complete_assignment(
+            questionnaire = get_repository().complete_questionnaire(
                 UUID(str(respondent_id))
             )
-    except (
-        DatabaseConfigurationError,
-        AssignmentError,
-        SubmissionError,
-    ) as exc:
+    except (DatabaseConfigurationError, AssignmentError, SubmissionError) as exc:
         st.error(str(exc))
         return
     except Exception:
-        LOGGER.exception("Unexpected distributed submission failure")
+        LOGGER.exception("Unexpected hierarchical submission failure")
         st.error(
             "An unexpected error prevented final submission. Your answers remain "
             "saved; please retry."
         )
         return
-
-    st.session_state["assignment"] = dict(assignment)
+    st.session_state["questionnaire"] = dict(questionnaire)
     st.session_state["submitted"] = True
 
 
-def _review_dataframe(set_id: int) -> pd.DataFrame:
-    relationships = get_questionnaire_set(set_id)
-    judgments = st.session_state["judgments"]
+def _review_dataframe() -> pd.DataFrame:
+    judgments = st.session_state.get("judgments", {})
     return pd.DataFrame.from_records(
         {
-            "Question": relationship.position,
+            "Matrix": relationship.matrix_label,
             "Source": f"{relationship.source_code} — {relationship.source_name}",
             "Target": f"{relationship.target_code} — {relationship.target_name}",
             "Response": judgments.get(relationship.key, "Missing"),
         }
-        for relationship in relationships
+        for relationship in all_hierarchical_relationships()
     )
 
 
 def render() -> None:
-    """Render validation, response review, completion, and receipt."""
+    """Render section-level validation, optional answer review, and submission."""
 
-    set_id = st.session_state.get("assigned_set_id")
-    code_is_valid, _, _ = validate_expert_code(st.session_state["expert_code"])
-    if not set_id or not code_is_valid:
+    questionnaire = st.session_state.get("questionnaire") or {}
+    code_is_valid, _, _ = validate_expert_code(
+        str(st.session_state.get("expert_code", ""))
+    )
+    if not questionnaire or not code_is_valid:
         page_header(
             "Step 6 of 6",
             "Review and submit",
-            "A valid questionnaire assignment is required before submission.",
+            "A valid questionnaire session is required before submission.",
         )
-        st.warning("Return to the evaluation step to create or restore an assignment.")
-        st.button(
-            "← Back to evaluation",
-            on_click=go_to_page,
-            args=(4,),
-        )
+        st.warning("Return to the evaluation to create or restore your session.")
+        st.button("← Back to evaluation", on_click=go_to_page, args=(4,))
         return
 
-    set_id = int(set_id)
-    status = validate_assigned_responses(set_id, st.session_state["judgments"])
-    assignment = st.session_state.get("assignment") or {}
-    is_submitted = bool(st.session_state["submitted"]) or (
-        assignment.get("status") == "completed"
+    judgments = st.session_state.get("judgments", {})
+    overall = validate_hierarchical_questionnaire(judgments)
+    is_submitted = bool(st.session_state.get("submitted")) or (
+        questionnaire.get("status") == "completed"
     )
-
     page_header(
         "Step 6 of 6",
         "Review and submit",
         (
-            f"Review questionnaire set {set_id}. Every selection has already been "
-            "saved; final submission records one common completion timestamp."
+            "Check each section below. Every selection has already been saved "
+            "against your anonymous respondent ID."
         ),
     )
 
@@ -123,59 +121,79 @@ def render() -> None:
         st.markdown(
             "<div class='content-card'><strong>Submission receipt</strong><br>"
             f"Respondent ID: <code>{st.session_state['respondent_id']}</code><br>"
-            f"Questionnaire set: <strong>{set_id}</strong><br>"
-            f"Stored evaluations: <strong>{status.completed}</strong></div>",
+            "Questionnaire design: <strong>Hierarchical Fuzzy DEMATEL</strong><br>"
+            f"Stored evaluations: <strong>{overall.completed}</strong></div>",
             unsafe_allow_html=True,
         )
-        st.info(
-            "Keep the respondent ID if the study protocol permits later queries."
-        )
+        st.info("Keep the respondent ID if the study protocol permits later queries.")
         st.caption(
-            f"For any questions regarding the research: Anargyros Ziakas, "
-            f"PhD Candidate, University of the Aegean · {CONTACT_EMAIL}"
+            "For research questions: Anargyros Ziakas, PhD Candidate, "
+            f"University of the Aegean · {CONTACT_EMAIL}"
         )
         return
 
-    first, second, third = st.columns(3)
-    first.metric("Questionnaire set", set_id)
-    second.metric("Saved evaluations", f"{status.completed} / {status.required}")
-    third.metric("Anonymous code", st.session_state["expert_code"])
+    st.progress(
+        overall.completion_ratio,
+        text=(
+            f"Total · {overall.completed} / "
+            f"{HIERARCHICAL_REQUIRED_COMPARISONS} completed"
+        ),
+    )
+    for index, matrix in enumerate(matrix_definitions()):
+        status = validate_hierarchical_matrix(matrix.id, judgments)
+        with st.container(key=f"review_section_{matrix.id}"):
+            label_column, status_column, action_column = st.columns([3, 1.1, 1.1])
+            with label_column:
+                st.markdown(f"**{matrix.label}**")
+            with status_column:
+                st.markdown(f"**{status.completed} / {status.required}**")
+            with action_column:
+                st.button(
+                    "Review" if status.is_valid else "Complete",
+                    key=f"review_return_{matrix.id}",
+                    on_click=_return_to_matrix,
+                    args=(index,),
+                    use_container_width=True,
+                )
 
-    if status.is_valid:
-        st.success("Validation passed. Your assigned response set is complete.")
+    if overall.is_valid:
+        st.success(
+            "Validation passed: all 104 required directed relationships are saved."
+        )
     else:
         st.warning(
-            f"Complete the remaining {len(status.missing)} relationship(s) before "
-            "submitting."
+            f"Complete the remaining {len(overall.missing)} relationship(s) before "
+            "submitting. Use the section buttons above to return directly."
         )
 
-    with st.expander("Review all assigned responses", expanded=False):
+    with st.expander("Review individual answers (optional)", expanded=False):
         st.dataframe(
-            _review_dataframe(set_id),
+            _review_dataframe(),
             hide_index=True,
             use_container_width=True,
+            height=520,
         )
 
     st.markdown(
         "<div class='privacy-note'><strong>Final action</strong><br>"
-        "Submitting marks this questionnaire set as complete. Your autosaved "
-        "responses remain linked only to the anonymous respondent ID.</div>",
+        "Submitting marks this anonymous questionnaire complete. Saved answers "
+        "cannot be changed afterwards.</div>",
         unsafe_allow_html=True,
     )
     st.write("")
-    back_column, _, submit_column = st.columns([1.2, 3, 1.5])
+    back_column, _, submit_column = st.columns([1.25, 3, 1.55])
     with back_column:
         st.button(
             "← Back to evaluation",
-            on_click=go_to_page,
-            args=(4,),
+            on_click=_return_to_matrix,
+            args=(3,),
             use_container_width=True,
         )
     with submit_column:
         st.button(
-            "Submit response set",
+            "Submit expert evaluation",
             type="primary",
-            disabled=not status.is_valid,
+            disabled=not overall.is_valid,
             on_click=_complete_submission,
             use_container_width=True,
         )

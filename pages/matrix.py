@@ -1,4 +1,4 @@
-"""One-question-at-a-time evaluation for an assigned relationship set."""
+"""Step-by-step four-matrix hierarchical Fuzzy DEMATEL evaluation."""
 
 from __future__ import annotations
 
@@ -7,46 +7,46 @@ from uuid import UUID, uuid4
 
 import streamlit as st
 
-from components.layout import go_to_page, page_header
-from components.matrix_grid import render_scale_legend
-from components.relationship_question import render_relationship_question
-from database import (
-    AssignmentError,
-    AutosaveError,
-    DatabaseConfigurationError,
+from components.fuzzy_matrix import (
+    render_criteria_reference,
+    render_fuzzy_matrix,
+    render_scale_reference,
 )
-from models import DirectedRelationship
-from questionnaire_sets import get_questionnaire_set
+from components.layout import go_to_page, page_header
+from config import HIERARCHICAL_REQUIRED_COMPARISONS
+from database import AssignmentError, AutosaveError, DatabaseConfigurationError
+from hierarchical_questionnaire import matrix_definitions
+from models import HierarchicalRelationship
 from research_content import DIRECT_INFLUENCE_REMINDER
 from services import get_repository
 from validation import (
-    build_distributed_response_record,
-    validate_assigned_responses,
+    build_hierarchical_response_record,
     validate_expert_code,
+    validate_hierarchical_matrix,
+    validate_hierarchical_questionnaire,
 )
 
 LOGGER = logging.getLogger(__name__)
 
 
 def _load_response_state(respondent_id: UUID) -> None:
-    repository = get_repository()
-    responses = repository.load_responses(respondent_id)
+    responses = get_repository().load_responses(respondent_id)
     st.session_state["judgments"] = {
-        f"{record['from_factor']}|{record['to_factor']}": record[
-            "linguistic_value"
-        ]
+        (
+            f"{record['matrix_id']}|{record['source_code']}|"
+            f"{record['target_code']}"
+        ): record["linguistic_value"]
         for record in responses
     }
 
 
-def _ensure_assignment() -> bool:
-    """Create one balanced assignment and durable resume URL when needed."""
+def _ensure_questionnaire() -> bool:
+    """Create one anonymous, refresh-safe hierarchical session when needed."""
 
-    if st.session_state.get("assigned_set_id"):
+    if st.session_state.get("questionnaire"):
         return True
-
     code_is_valid, normalized_code, code_message = validate_expert_code(
-        st.session_state["expert_code"]
+        str(st.session_state.get("expert_code", ""))
     )
     if not code_is_valid:
         st.error(code_message)
@@ -56,8 +56,8 @@ def _ensure_assignment() -> bool:
     respondent_id = UUID(str(raw_respondent_id)) if raw_respondent_id else uuid4()
     try:
         repository = get_repository()
-        with st.spinner("Assigning your balanced questionnaire set…"):
-            assignment = repository.assign_respondent(
+        with st.spinner("Preparing your secure questionnaire…"):
+            questionnaire = repository.start_questionnaire(
                 respondent_id, normalized_code
             )
             _load_response_state(respondent_id)
@@ -68,9 +68,8 @@ def _ensure_assignment() -> bool:
     st.session_state.update(
         {
             "respondent_id": str(respondent_id),
-            "assignment": dict(assignment),
-            "assigned_set_id": int(assignment["set_id"]),
-            "question_index": 0,
+            "questionnaire": dict(questionnaire),
+            "current_matrix_index": 0,
         }
     )
     st.query_params["respondent"] = str(respondent_id)
@@ -78,18 +77,18 @@ def _ensure_assignment() -> bool:
 
 
 def _autosave_response(
-    relationship: DirectedRelationship,
+    relationship: HierarchicalRelationship,
     widget_key: str,
 ) -> None:
-    """Persist one selection and only then mark it complete locally."""
+    """Persist one scale choice before marking the cell complete locally."""
 
     value = st.session_state.get(widget_key)
     if not isinstance(value, str):
         return
     try:
-        record = build_distributed_response_record(
+        record = build_hierarchical_response_record(
             respondent_id=UUID(str(st.session_state["respondent_id"])),
-            expert_code=st.session_state["expert_code"],
+            expert_code=str(st.session_state["expert_code"]),
             relationship=relationship,
             linguistic_value=value,
         )
@@ -100,144 +99,159 @@ def _autosave_response(
         st.session_state["pending_relationship_key"] = relationship.key
         return
 
-    judgments = dict(st.session_state["judgments"])
+    judgments = dict(st.session_state.get("judgments", {}))
     judgments[relationship.key] = value
     st.session_state["judgments"] = judgments
     st.session_state["autosave_error"] = None
     st.session_state["pending_relationship_key"] = None
 
 
-def _retry_autosave(
-    relationship: DirectedRelationship,
-    widget_key: str,
-) -> None:
-    _autosave_response(relationship, widget_key)
+def _change_matrix(index: int) -> None:
+    matrices = matrix_definitions()
+    st.session_state["current_matrix_index"] = min(
+        len(matrices) - 1, max(0, index)
+    )
+    st.session_state["active_relationship_key"] = None
 
 
-def _change_question(delta: int, question_count: int) -> None:
-    index = int(st.session_state.get("question_index", 0)) + delta
-    st.session_state["question_index"] = min(question_count - 1, max(0, index))
+def _continue_from_matrix(index: int) -> None:
+    if index < len(matrix_definitions()) - 1:
+        _change_matrix(index + 1)
+    else:
+        go_to_page(5)
 
 
 def render() -> None:
-    """Render one readable relationship at a time with immediate autosave."""
+    """Render exactly one of the four manageable matrix stages."""
 
-    code_is_valid, _, _ = validate_expert_code(st.session_state["expert_code"])
-    if not st.session_state["consent_given"] or not code_is_valid:
-        st.warning("Complete the consent and anonymous-code steps first.")
-        st.button(
-            "← Back to expert code",
-            on_click=go_to_page,
-            args=(3,),
-        )
-        return
-    if not _ensure_assignment():
-        st.button(
-            "← Back to expert code",
-            on_click=go_to_page,
-            args=(3,),
-        )
-        return
-
-    set_id = int(st.session_state["assigned_set_id"])
-    relationships = get_questionnaire_set(set_id)
-    question_count = len(relationships)
-    index = min(
-        question_count - 1,
-        max(0, int(st.session_state.get("question_index", 0))),
+    code_is_valid, _, _ = validate_expert_code(
+        str(st.session_state.get("expert_code", ""))
     )
-    st.session_state["question_index"] = index
-    relationship = relationships[index]
-    status = validate_assigned_responses(set_id, st.session_state["judgments"])
+    if not st.session_state.get("consent_given") or not code_is_valid:
+        st.warning("Complete the consent and anonymous-code steps first.")
+        st.button("← Back to expert code", on_click=go_to_page, args=(3,))
+        return
+    if not _ensure_questionnaire():
+        st.button("← Back to expert code", on_click=go_to_page, args=(3,))
+        return
+
+    matrices = matrix_definitions()
+    index = min(
+        len(matrices) - 1,
+        max(0, int(st.session_state.get("current_matrix_index", 0))),
+    )
+    st.session_state["current_matrix_index"] = index
+    matrix = matrices[index]
+    judgments = st.session_state["judgments"]
+    matrix_status = validate_hierarchical_matrix(matrix.id, judgments)
+    overall_status = validate_hierarchical_questionnaire(judgments)
+    overall_percent = round(overall_status.completion_ratio * 100)
 
     page_header(
-        "Step 5 of 6",
-        "Direct influence evaluation",
+        "Step 5 of 6 · Hierarchical evaluation",
+        matrix.label,
         (
-            f"Questionnaire set {set_id} contains {question_count} unique directed "
-            "relationships. The complete 18×18 matrix is not shown."
+            f"Matrix {index + 1} of {len(matrices)} · "
+            f"{matrix.required_comparisons} directed relationships"
         ),
     )
-    st.markdown(f"**Question {index + 1} of {question_count}**")
-    st.progress(
-        (index + 1) / question_count,
-        text=f"Question {index + 1} of {question_count}",
-    )
-    st.caption(
-        f"Completed and saved: {status.completed} of {status.required} evaluations"
-    )
-    render_scale_legend()
     st.markdown(
-        "<span class='scale-chip'><strong>Cannot Assess</strong> · "
-        "Use only when a defensible judgement cannot be made</span>",
+        "<div class='matrix-step-card'>"
+        f"<strong>Step {index + 1} of 4</strong>"
+        f"<span>{escape_label(matrix.short_label)}</span></div>",
+        unsafe_allow_html=True,
+    )
+    st.progress(
+        overall_status.completion_ratio,
+        text=(
+            f"Research progress · {overall_status.completed} of "
+            f"{HIERARCHICAL_REQUIRED_COMPARISONS} saved ({overall_percent}%)"
+        ),
+    )
+    st.markdown(
+        f"**Current matrix:** {matrix_status.completed} of "
+        f"{matrix_status.required} relationships completed"
+    )
+    st.progress(matrix_status.completion_ratio)
+
+    st.markdown(
+        "<div class='orientation-card matrix-orientation'>"
+        "Please indicate how much the <strong>ROW factor</strong> influences the "
+        "<strong>COLUMN factor</strong>.<div class='orientation-roles'>"
+        "<span>ROW = CAUSE</span><span>COLUMN = AFFECTED FACTOR</span>"
+        "</div></div>",
         unsafe_allow_html=True,
     )
     st.info(DIRECT_INFLUENCE_REMINDER)
-
-    widget_key = (
-        f"response_{relationship.set_id}_"
-        f"{relationship.source_code}_{relationship.target_code}"
+    st.caption(
+        "For the best matrix experience, a tablet or desktop computer is "
+        "recommended. Mobile users can scroll horizontally."
     )
-    selected_value = st.session_state["judgments"].get(relationship.key)
-    render_relationship_question(
-        relationship,
-        selected_value=selected_value,
+    render_scale_reference()
+    render_criteria_reference(matrix)
+    active = render_fuzzy_matrix(
+        matrix,
+        judgments=judgments,
         on_change=_autosave_response,
-        on_change_args=(relationship, widget_key),
     )
 
     if (
         st.session_state.get("autosave_error")
-        and st.session_state.get("pending_relationship_key") == relationship.key
+        and st.session_state.get("pending_relationship_key") == active.key
     ):
-        st.error(st.session_state["autosave_error"])
+        st.error(str(st.session_state["autosave_error"]))
+        widget_key = (
+            f"scale_selector_{active.matrix_id}_{active.source_code}_"
+            f"{active.target_code}"
+        )
         st.button(
             "Retry saving this response",
-            on_click=_retry_autosave,
-            args=(relationship, widget_key),
+            on_click=_autosave_response,
+            args=(active, widget_key),
             use_container_width=True,
         )
-    elif relationship.key in st.session_state["judgments"]:
+    elif active.key in st.session_state["judgments"]:
         st.markdown(
             "<p class='autosave-note'>✓ Saved automatically</p>",
             unsafe_allow_html=True,
         )
 
-    current_is_saved = relationship.key in st.session_state["judgments"]
-    previous_column, _, next_column = st.columns([1.25, 3, 1.5])
-    with previous_column:
-        st.button(
-            "← Previous question",
-            disabled=index == 0,
-            on_click=_change_question,
-            args=(-1, question_count),
-            use_container_width=True,
+    if matrix_status.is_valid:
+        st.success(f"{matrix.label} is complete and safely saved.")
+    elif matrix_status.completed:
+        st.caption(
+            f"{len(matrix_status.missing)} relationship(s) remain in this matrix."
         )
-    with next_column:
-        if index < question_count - 1:
+
+    previous_column, _, next_column = st.columns([1.35, 3, 1.5])
+    with previous_column:
+        if index == 0:
             st.button(
-                "Next question →",
-                type="primary",
-                disabled=not current_is_saved,
-                on_click=_change_question,
-                args=(1, question_count),
+                "← Expert code",
+                on_click=go_to_page,
+                args=(3,),
                 use_container_width=True,
             )
         else:
-            final_status = validate_assigned_responses(
-                set_id, st.session_state["judgments"]
-            )
             st.button(
-                "Review responses",
-                type="primary",
-                disabled=not final_status.is_valid,
-                on_click=go_to_page,
-                args=(5,),
+                "← Previous matrix",
+                on_click=_change_matrix,
+                args=(index - 1,),
                 use_container_width=True,
             )
-
-    if status.is_valid and index < question_count - 1:
-        st.success(
-            "All assigned relationships are saved. Continue to the final question "
-            "to review and submit."
+    with next_column:
+        st.button(
+            "Review questionnaire" if index == 3 else "Continue →",
+            type="primary",
+            on_click=_continue_from_matrix,
+            args=(index,),
+            use_container_width=True,
         )
+
+
+def escape_label(value: str) -> str:
+    """Escape a matrix label used in a small trusted HTML fragment."""
+
+    from html import escape
+
+    return escape(value)
