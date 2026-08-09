@@ -170,3 +170,8 @@ def test_database_migration_documents_the_104_pair_contract() -> None:
     assert "hierarchical_relationships" in sql
     assert "hierarchical_responses" in sql
     assert "response_count <> 104" in sql
+    assert (
+        "on conflict on constraint hierarchical_questionnaires_pkey do nothing"
+        in sql
+    )
+    assert "on conflict (respondent_id)" not in sql
