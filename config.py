@@ -61,7 +61,7 @@ class LinguisticScaleItem:
 SCALE_ITEMS: Final[tuple[LinguisticScaleItem, ...]] = (
     LinguisticScaleItem("VL", "Very Low Influence", 0.00, 0.00, 0.25),
     LinguisticScaleItem("LI", "Low Influence", 0.00, 0.25, 0.50),
-    LinguisticScaleItem("I", "Moderate Influence", 0.25, 0.50, 0.75),
+    LinguisticScaleItem("I", "Influence", 0.25, 0.50, 0.75),
     LinguisticScaleItem("HI", "High Influence", 0.50, 0.75, 1.00),
     LinguisticScaleItem("VH", "Very High Influence", 0.75, 1.00, 1.00),
 )
@@ -78,6 +78,12 @@ DIAGONAL_CELLS: Final[int] = MATRIX_SIZE
 REQUIRED_COMPARISONS: Final[int] = TOTAL_CELLS - DIAGONAL_CELLS
 QUESTIONNAIRE_SET_COUNT: Final[int] = 7
 MIN_EVALUATIONS_DEFAULT: Final[int] = 3
+HIERARCHICAL_REQUIRED_COMPARISONS: Final[int] = 104
+HIERARCHICAL_DESIGN_VERSION: Final[str] = "hierarchical_v1"
+DEFAULT_HIERARCHICAL_ASSIGNMENT_TABLE: Final[str] = (
+    "hierarchical_questionnaires"
+)
+DEFAULT_HIERARCHICAL_RESPONSE_TABLE: Final[str] = "hierarchical_responses"
 
 APP_TITLE: Final[str] = "Fuzzy DEMATEL Expert Evaluation Platform"
 APP_ICON: Final[str] = "∿"

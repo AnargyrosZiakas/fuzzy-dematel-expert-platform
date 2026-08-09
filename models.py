@@ -50,6 +50,34 @@ class DistributedResponseRecord(TypedDict):
     is_diagonal: bool
 
 
+class HierarchicalQuestionnaireRecord(TypedDict):
+    """Anonymous questionnaire state for the four-matrix instrument."""
+
+    respondent_id: str
+    expert_code: str
+    design_version: str
+    status: str
+    started_at: str
+    completed_at: str | None
+
+
+class HierarchicalResponseRecord(TypedDict):
+    """One autosaved answer in the hierarchical instrument."""
+
+    respondent_id: str
+    expert_code: str
+    matrix_id: str
+    source_code: str
+    source_name: str
+    target_code: str
+    target_name: str
+    linguistic_value: str
+    tfn_l: float
+    tfn_m: float
+    tfn_u: float
+    responded_at: str
+
+
 @dataclass(frozen=True, slots=True)
 class DirectedRelationship:
     """One off-diagonal relationship assigned to exactly one set."""
@@ -66,6 +94,53 @@ class DirectedRelationship:
         """Return the stable response key used in session state."""
 
         return f"{self.source_code}|{self.target_code}"
+
+
+@dataclass(frozen=True, slots=True)
+class MatrixCriterion:
+    """A criterion or dimension displayed on a matrix axis."""
+
+    code: str
+    name: str
+    definition: str
+
+
+@dataclass(frozen=True, slots=True)
+class MatrixDefinition:
+    """Data-driven definition of one hierarchical Fuzzy DEMATEL matrix."""
+
+    id: str
+    label: str
+    short_label: str
+    criteria: tuple[MatrixCriterion, ...]
+
+    @property
+    def required_comparisons(self) -> int:
+        """Return the number of editable directed off-diagonal cells."""
+
+        size = len(self.criteria)
+        return size * (size - 1)
+
+
+@dataclass(frozen=True, slots=True)
+class HierarchicalRelationship:
+    """One allowed directed relationship in a hierarchical matrix."""
+
+    matrix_id: str
+    matrix_label: str
+    position: int
+    source_code: str
+    source_name: str
+    target_code: str
+    target_name: str
+
+    @property
+    def key(self) -> str:
+        """Return the stable answer key, including the matrix identity."""
+
+        return (
+            f"{self.matrix_id}|{self.source_code}|{self.target_code}"
+        )
 
 
 @dataclass(frozen=True, slots=True)

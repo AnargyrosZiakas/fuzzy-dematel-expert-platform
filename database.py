@@ -9,8 +9,21 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from config import DEFAULT_SCHEMA_NAME, DEFAULT_TABLE_NAME, TOTAL_CELLS
-from models import AssignmentRecord, DistributedResponseRecord, ResponseRecord
+from config import (
+    DEFAULT_HIERARCHICAL_ASSIGNMENT_TABLE,
+    DEFAULT_HIERARCHICAL_RESPONSE_TABLE,
+    DEFAULT_SCHEMA_NAME,
+    DEFAULT_TABLE_NAME,
+    TOTAL_CELLS,
+)
+from hierarchical_questionnaire import all_hierarchical_relationships
+from models import (
+    AssignmentRecord,
+    DistributedResponseRecord,
+    HierarchicalQuestionnaireRecord,
+    HierarchicalResponseRecord,
+    ResponseRecord,
+)
 from questionnaire_sets import get_questionnaire_set
 
 LOGGER = logging.getLogger(__name__)
@@ -40,6 +53,8 @@ class SupabaseSettings:
     key: str
     table_name: str = DEFAULT_TABLE_NAME
     assignment_table: str = "questionnaire_assignments"
+    hierarchical_assignment_table: str = DEFAULT_HIERARCHICAL_ASSIGNMENT_TABLE
+    hierarchical_response_table: str = DEFAULT_HIERARCHICAL_RESPONSE_TABLE
     schema_name: str = DEFAULT_SCHEMA_NAME
 
     @classmethod
@@ -71,6 +86,14 @@ class SupabaseSettings:
             table_name=read("SUPABASE_TABLE", DEFAULT_TABLE_NAME),
             assignment_table=read(
                 "SUPABASE_ASSIGNMENTS_TABLE", "questionnaire_assignments"
+            ),
+            hierarchical_assignment_table=read(
+                "SUPABASE_HIERARCHICAL_ASSIGNMENTS_TABLE",
+                DEFAULT_HIERARCHICAL_ASSIGNMENT_TABLE,
+            ),
+            hierarchical_response_table=read(
+                "SUPABASE_HIERARCHICAL_RESPONSES_TABLE",
+                DEFAULT_HIERARCHICAL_RESPONSE_TABLE,
             ),
             schema_name=read("SUPABASE_SCHEMA", DEFAULT_SCHEMA_NAME),
         )
@@ -338,3 +361,249 @@ class DistributedQuestionnaireRepository:
         except Exception as exc:  # pragma: no cover - remote behavior
             LOGGER.exception("Administrator response query failed")
             raise AssignmentError("Response statistics could not be loaded.") from exc
+
+
+class HierarchicalQuestionnaireRepository:
+    """Persistence for the versioned four-matrix hierarchical questionnaire."""
+
+    def __init__(self, client: Any, settings: SupabaseSettings) -> None:
+        self._client = client
+        self._settings = settings
+
+    @classmethod
+    def connect(
+        cls, settings: SupabaseSettings
+    ) -> HierarchicalQuestionnaireRepository:
+        """Create a Supabase-backed hierarchical repository."""
+
+        return cls(client=_create_client(settings), settings=settings)
+
+    def _query_root(self) -> Any:
+        if self._settings.schema_name == DEFAULT_SCHEMA_NAME:
+            return self._client
+        return self._client.schema(self._settings.schema_name)
+
+    def start_questionnaire(
+        self, respondent_id: UUID, expert_code: str
+    ) -> HierarchicalQuestionnaireRecord:
+        """Atomically create or return an anonymous questionnaire session."""
+
+        try:
+            response = (
+                self._query_root()
+                .rpc(
+                    "start_hierarchical_questionnaire",
+                    {
+                        "p_respondent_id": str(respondent_id),
+                        "p_expert_code": expert_code,
+                    },
+                )
+                .execute()
+            )
+            rows = _response_data(response)
+            if len(rows) != 1:
+                raise AssignmentError("The questionnaire service returned no session.")
+            return HierarchicalQuestionnaireRecord(**rows[0])
+        except AssignmentError:
+            raise
+        except Exception as exc:  # pragma: no cover - remote behavior
+            LOGGER.exception("Hierarchical questionnaire start failed")
+            raise AssignmentError(
+                "Your questionnaire could not be started. Please try again."
+            ) from exc
+
+    def load_questionnaire(
+        self, respondent_id: UUID
+    ) -> HierarchicalQuestionnaireRecord | None:
+        """Load one hierarchical session for refresh-safe recovery."""
+
+        try:
+            response = (
+                self._query_root()
+                .table(self._settings.hierarchical_assignment_table)
+                .select("*")
+                .eq("respondent_id", str(respondent_id))
+                .limit(1)
+                .execute()
+            )
+            rows = _response_data(response)
+            return HierarchicalQuestionnaireRecord(**rows[0]) if rows else None
+        except Exception as exc:  # pragma: no cover - remote behavior
+            LOGGER.exception("Unable to load hierarchical questionnaire")
+            raise AssignmentError(
+                "Saved questionnaire progress could not be loaded."
+            ) from exc
+
+    def load_responses(
+        self, respondent_id: UUID
+    ) -> list[HierarchicalResponseRecord]:
+        """Load every autosaved hierarchical answer for one respondent."""
+
+        try:
+            response = (
+                self._query_root()
+                .table(self._settings.hierarchical_response_table)
+                .select("*")
+                .eq("respondent_id", str(respondent_id))
+                .execute()
+            )
+            return [
+                HierarchicalResponseRecord(**row)
+                for row in _response_data(response)
+            ]
+        except Exception as exc:  # pragma: no cover - remote behavior
+            LOGGER.exception("Unable to load hierarchical responses")
+            raise AssignmentError(
+                "Saved relationship responses could not be loaded."
+            ) from exc
+
+    def save_response(self, record: HierarchicalResponseRecord) -> None:
+        """Upsert one allowed answer immediately for automatic progress saving."""
+
+        allowed_keys = {
+            (
+                relationship.matrix_id,
+                relationship.source_code,
+                relationship.target_code,
+            )
+            for relationship in all_hierarchical_relationships()
+        }
+        key = (
+            record["matrix_id"],
+            record["source_code"],
+            record["target_code"],
+        )
+        if key not in allowed_keys or key[1] == key[2]:
+            raise AutosaveError(
+                "This relationship is not part of the hierarchical questionnaire."
+            )
+        try:
+            (
+                self._query_root()
+                .table(self._settings.hierarchical_response_table)
+                .upsert(
+                    dict(record),
+                    on_conflict=(
+                        "respondent_id,matrix_id,source_code,target_code"
+                    ),
+                    returning="minimal",
+                )
+                .execute()
+            )
+        except Exception as exc:  # pragma: no cover - remote behavior
+            LOGGER.exception("Hierarchical relationship autosave failed")
+            raise AutosaveError(
+                "This response could not be saved. Please retry before continuing."
+            ) from exc
+
+    def complete_questionnaire(
+        self, respondent_id: UUID
+    ) -> HierarchicalQuestionnaireRecord:
+        """Verify all 104 answers and atomically mark the session completed."""
+
+        try:
+            response = (
+                self._query_root()
+                .rpc(
+                    "complete_hierarchical_questionnaire",
+                    {"p_respondent_id": str(respondent_id)},
+                )
+                .execute()
+            )
+            rows = _response_data(response)
+            if len(rows) != 1:
+                raise AssignmentError("Completion confirmation was not returned.")
+            return HierarchicalQuestionnaireRecord(**rows[0])
+        except AssignmentError:
+            raise
+        except Exception as exc:  # pragma: no cover - remote behavior
+            LOGGER.exception("Hierarchical questionnaire completion failed")
+            raise SubmissionError(
+                "Your questionnaire could not be submitted. Saved answers remain "
+                "available; please retry."
+            ) from exc
+
+    def _fetch_all(self, table_name: str) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        page_size = 1000
+        start = 0
+        while True:
+            response = (
+                self._query_root()
+                .table(table_name)
+                .select("*")
+                .range(start, start + page_size - 1)
+                .execute()
+            )
+            page = _response_data(response)
+            rows.extend(page)
+            if len(page) < page_size:
+                return rows
+            start += page_size
+
+    def fetch_all_questionnaires(self) -> list[HierarchicalQuestionnaireRecord]:
+        """Return all hierarchical sessions for administrator reporting."""
+
+        try:
+            return [
+                HierarchicalQuestionnaireRecord(**row)
+                for row in self._fetch_all(
+                    self._settings.hierarchical_assignment_table
+                )
+            ]
+        except Exception as exc:  # pragma: no cover - remote behavior
+            LOGGER.exception("Administrator questionnaire query failed")
+            raise AssignmentError(
+                "Questionnaire statistics could not be loaded."
+            ) from exc
+
+    def fetch_all_responses(self) -> list[HierarchicalResponseRecord]:
+        """Return all hierarchical answers for administrator reporting/export."""
+
+        try:
+            return [
+                HierarchicalResponseRecord(**row)
+                for row in self._fetch_all(self._settings.hierarchical_response_table)
+            ]
+        except Exception as exc:  # pragma: no cover - remote behavior
+            LOGGER.exception("Administrator hierarchical response query failed")
+            raise AssignmentError("Response statistics could not be loaded.") from exc
+
+    def fetch_legacy_assignments(self) -> list[AssignmentRecord]:
+        """Retain administrator access to historical seven-set assignments."""
+
+        return [
+            AssignmentRecord(**row)
+            for row in self._fetch_all(self._settings.assignment_table)
+        ]
+
+    def load_legacy_assignment(
+        self, respondent_id: UUID
+    ) -> AssignmentRecord | None:
+        """Load one pre-migration seven-set session without modifying it."""
+
+        try:
+            response = (
+                self._query_root()
+                .table(self._settings.assignment_table)
+                .select("*")
+                .eq("respondent_id", str(respondent_id))
+                .limit(1)
+                .execute()
+            )
+            rows = _response_data(response)
+            return AssignmentRecord(**rows[0]) if rows else None
+        except Exception as exc:  # pragma: no cover - remote behavior
+            LOGGER.exception("Unable to load historical questionnaire")
+            raise AssignmentError(
+                "Saved historical questionnaire progress could not be loaded."
+            ) from exc
+
+    def fetch_legacy_responses(self) -> list[DistributedResponseRecord]:
+        """Retain administrator access to historical seven-set answers."""
+
+        return [
+            DistributedResponseRecord(**row)
+            for row in self._fetch_all(self._settings.table_name)
+            if row.get("set_id") is not None and not row.get("is_diagonal")
+        ]

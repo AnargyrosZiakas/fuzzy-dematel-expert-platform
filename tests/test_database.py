@@ -11,12 +11,17 @@ from config import TOTAL_CELLS
 from database import (
     AutosaveError,
     DistributedQuestionnaireRepository,
+    HierarchicalQuestionnaireRepository,
     SubmissionError,
     SupabaseResponseRepository,
     SupabaseSettings,
 )
+from hierarchical_questionnaire import all_hierarchical_relationships
 from questionnaire_sets import get_questionnaire_set
-from validation import build_distributed_response_record
+from validation import (
+    build_distributed_response_record,
+    build_hierarchical_response_record,
+)
 
 
 class FakeQuery:
@@ -145,3 +150,38 @@ def test_distributed_repository_autosaves_only_assigned_pair() -> None:
     invalid_record["to_factor"] = relationship.source_code
     with pytest.raises(AutosaveError, match="not part"):
         repository.save_response(invalid_record)  # type: ignore[arg-type]
+
+
+def test_hierarchical_repository_starts_and_autosaves_allowed_pair() -> None:
+    respondent_id = UUID("12345678-1234-5678-1234-567812345678")
+    client = FakeDistributedClient()
+    client.query.data = [
+        {
+            "respondent_id": str(respondent_id),
+            "expert_code": "EXP-TEST01",
+            "design_version": "hierarchical_v1",
+            "status": "in_progress",
+            "started_at": "2026-08-02T12:00:00+00:00",
+            "completed_at": None,
+        }
+    ]
+    repository = HierarchicalQuestionnaireRepository(
+        client, SupabaseSettings("https://example.supabase.co", "secret")
+    )
+    questionnaire = repository.start_questionnaire(respondent_id, "EXP-TEST01")
+    assert questionnaire["design_version"] == "hierarchical_v1"
+    assert client.rpc_name == "start_hierarchical_questionnaire"
+
+    relationship = all_hierarchical_relationships()[0]
+    record = build_hierarchical_response_record(
+        respondent_id=respondent_id,
+        expert_code="EXP-TEST01",
+        relationship=relationship,
+        linguistic_value="VH",
+    )
+    repository.save_response(record)
+    assert client.query.upserted["matrix_id"] == "cultural"
+    assert client.query.upserted["linguistic_value"] == "VH"
+    assert client.query.on_conflict == (
+        "respondent_id,matrix_id,source_code,target_code"
+    )

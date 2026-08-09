@@ -1,87 +1,94 @@
 # Fuzzy DEMATEL Expert Evaluation Platform
 
-A production-oriented Streamlit application that distributes the complete 18×18
-direct-influence design across seven balanced respondent sets. It preserves the
-scientific logic of Fuzzy DEMATEL while reducing individual respondent burden.
+A production-oriented Streamlit application for a hierarchical Fuzzy DEMATEL
+expert questionnaire. The instrument presents four manageable matrices and stores
+every directional judgement in Supabase as it is selected.
 
-## Instrument contract
+## Scientific instrument contract
 
-- Factors, in fixed order: `C1–C6`, `E1–E4`, `S1–S8`.
-- Exactly 306 off-diagonal directions, partitioned once across seven sets.
-- Set sizes: `44, 44, 44, 44, 44, 43, 43`.
-- Every variable appears as a source and target 2–3 times in every set.
-- Prompt: **To what extent does [Source Variable] influence [Target Variable]?**
-- One relationship per screen with immediate Supabase autosave.
-- Five linguistic values with exact triangular fuzzy numbers:
+The respondent completes the following fixed matrices:
 
-| Code | Meaning | TFN (l, m, u) |
+| Stage | Matrix | Size | Directed answers |
+|---|---|---:|---:|
+| 1 | Consumer-Cultural & Behavioural (`C1–C6`) | 6 × 6 | 30 |
+| 2 | Economic & Market (`E1–E4`) | 4 × 4 | 12 |
+| 3 | Airline Strategic & Operational (`S1–S8`) | 8 × 8 | 56 |
+| 4 | Relationships Between Dimensions (`C`, `E`, `S`) | 3 × 3 | 6 |
+|  | **Total** |  | **104** |
+
+Diagonal self-influence cells are disabled and never stored as respondent answers.
+Level 1 contains only within-dimension criterion relationships: individual
+cross-dimensional pairs such as `C1 → E2` do not exist in the questionnaire.
+The original 18 × 18 matrix and the earlier seven-set questionnaire are not shown
+to new respondents.
+
+The direction is always **ROW/source/cause → COLUMN/target/affected factor**. Each
+direction is distinct.
+
+### Linguistic scale
+
+| Code | Participant-facing meaning | TFN `(l, m, u)` |
 |---|---|---|
-| VL | Very Low Influence | (0.00, 0.00, 0.25) |
-| LI | Low Influence | (0.00, 0.25, 0.50) |
-| I | Moderate Influence | (0.25, 0.50, 0.75) |
-| HI | High Influence | (0.50, 0.75, 1.00) |
-| VH | Very High Influence | (0.75, 1.00, 1.00) |
+| VL | Very Low Influence | `(0.00, 0.00, 0.25)` |
+| LI | Low Influence | `(0.00, 0.25, 0.50)` |
+| I | Influence | `(0.25, 0.50, 0.75)` |
+| HI | High Influence | `(0.50, 0.75, 1.00)` |
+| VH | Very High Influence | `(0.75, 1.00, 1.00)` |
 
-`Cannot Assess` is also available. It has no TFN and is identified separately in
-administrator coverage reports. Diagonal relationships are never assigned or
-shown.
+Participants see only the linguistic choices. `Cannot Assess` is not part of the
+hierarchical instrument.
 
-New respondents are assigned atomically to the set with the fewest completed
-responses. Current assignment count breaks ties so simultaneous in-progress
-respondents remain balanced.
+## Respondent experience
+
+- Welcome, research information, consent and anonymous expert code
+- One matrix at a time with Previous/Continue navigation
+- Current-matrix and overall progress indicators
+- Explicit row/column direction guidance and an active relationship panel
+- Expandable criteria definitions and header tooltips
+- A five-option scale selector; completed cells retain a bold acronym
+- Immediate Supabase autosave after every valid selection
+- Refresh-safe recovery through `?respondent=<anonymous-uuid>`
+- Section-level review before final submission
+- Database and UI checks that block incomplete submission
+
+No account or participant authentication is required.
 
 ## Architecture
 
 ```text
-app.py                    Streamlit entry point and guarded page router
-config.py                 Fixed factors, linguistic scale, research settings
-research_content.py       Participant-facing wording from the approved workbook
-models.py                 Typed domain records
-questionnaire_sets.py     Audited seven-set relationship partition
-validation.py             Expert code, set, response, and TFN validation
-database.py               Assignment, autosave, completion, and admin repository
-services.py               Secure Streamlit/Supabase composition
-progress.py               Anonymous refresh-safe resume restoration
-export.py                 Legacy and combined administrator exports
-fuzzy_dematel.py          Input readers only; no calculations yet
+app.py                         Streamlit entry point and guarded page router
+config.py                      Instrument constants and exact TFN scale
+research_content.py            Approved participant-facing research wording
+models.py                      Typed domain records and matrix definitions
+hierarchical_questionnaire.py  Data-driven 30 + 12 + 56 + 6 pair catalogue
+validation.py                  Expert-code, relationship and completeness checks
+database.py                    Supabase sessions, autosave, completion and admin I/O
+services.py                    Secure Streamlit/Supabase composition
+progress.py                    Anonymous refresh-safe restoration
+export.py                      Current and historical CSV/Excel exports
+fuzzy_dematel.py               Validated input adapters; no calculations
 components/
-  layout.py               Shared navigation and visual system
-  relationship_question.py Readable single-relationship response control
-  matrix_grid.py          Retained, improved legacy matrix component
+  fuzzy_matrix.py              Matrix cells, selector, active panel and references
+  layout.py                    Navigation and the academic visual system
 pages/
-  admin.py                Password-protected coverage dashboard
+  admin.py                     Password-protected dashboard and downloads
   welcome.py
   research.py
   consent.py
   expert_code.py
   matrix.py
   submit.py
-data/factors.csv          Ordered dimensions, criteria, and tooltip definitions
-sql/schema.sql            Supabase table, constraints, trigger, and RLS
-tests/                    Validation, persistence, and export round trips
+data/factors.csv               Ordered criterion names and full definitions
+sql/
+  schema.sql                   Historical seven-set schema retained for compatibility
+  hierarchical_migration.sql   Versioned four-matrix schema and completion RPC
+tests/                         Scientific, UI, storage and export verification
 ```
 
-The future mathematical engine can read the combined long-format export through
-`fuzzy_dematel.load_distributed_export` without a database migration.
-
-## Research text configuration
-
-The study title, invitation, method instructions, consent statement, researcher
-details, and closing message are centralized in `research_content.py`. The 18
-approved criterion names and definitions are stored in `data/factors.csv`. Text
-can be revised there without changing matrix validation, database storage, or
-export logic. The order and `factor_code` values must not change.
-
-These metadata values can optionally be overridden through environment variables
-or Streamlit Cloud settings:
-
-- `STUDY_TITLE`
-- `RESEARCH_DESCRIPTION`
-- `RESEARCHER_NAME`
-- `RESEARCH_CONTACT_EMAIL`
-
-Any participant-facing revision should remain consistent with the study's
-approved research and data-management protocol.
+The old `questionnaire_assignments`, `questionnaire_relationships` and
+`expert_responses` tables remain available for historical data. New collection is
+isolated in `hierarchical_questionnaires`, `hierarchical_relationships` and
+`hierarchical_responses`, preventing incompatible study designs from being mixed.
 
 ## Local setup (Python 3.12)
 
@@ -96,27 +103,82 @@ streamlit run app.py
 
 Do not commit `.streamlit/secrets.toml`; it is ignored by Git.
 
-## Supabase setup
+## Supabase migration
 
-1. Create a Supabase project.
-2. Open its SQL editor and run `sql/schema.sql` once.
-3. Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml`.
-4. Add the project URL and **service-role key**.
-5. Configure `ADMIN_PASSWORD` (or `ADMIN_PASSWORD_SHA256`).
+For the existing deployed project, run only:
 
-Streamlit executes Python on the server, so the key is not sent to the expert's
-browser. The schema deliberately gives `anon` and `authenticated` no table
-access. Never place the service-role key in source code, a public repository, or
-client-side JavaScript.
+```text
+sql/hierarchical_migration.sql
+```
 
-The SQL migration seeds the audited 306-pair partition. An advisory-lock RPC
-assigns sets atomically. Each response is upserted immediately, and a completion
-RPC rejects incomplete sets, applies a common submission timestamp, and makes the
-completed response set immutable. Database constraints verify set membership,
-factor codes, direction, linguistic values, TFNs, and the no-diagonal rule.
+For a completely new Supabase project, run `sql/schema.sql` first and then
+`sql/hierarchical_migration.sql`. The hierarchical migration is idempotent and
+does not delete or alter historical responses.
 
-The anonymous respondent UUID is retained in the page URL as `?respondent=...`.
-Refreshing that URL reloads the assignment and all autosaved progress.
+Required encrypted Streamlit secrets:
+
+```toml
+SUPABASE_URL = "https://your-project-ref.supabase.co"
+SUPABASE_KEY = "your-service-role-key"
+SUPABASE_SCHEMA = "public"
+ADMIN_PASSWORD = "a-long-random-password"
+```
+
+Optional table-name overrides are documented in
+`.streamlit/secrets.toml.example`. The service-role key remains on the Streamlit
+server; it must never be committed or exposed in client-side code. Row-level
+security denies direct `anon` and `authenticated` access.
+
+The migration seeds exactly 104 allowed relationships. Foreign keys prevent
+diagonal, cross-dimensional or unknown pairs. A trigger verifies respondent code,
+criterion names and mutable session status. The completion RPC rejects any session
+without exactly 104 saved responses and makes completed answers immutable.
+
+## Administrator dashboard and export
+
+Open `?admin=1` and authenticate with the configured administrator password. The
+dashboard reports:
+
+- completed and in-progress anonymous respondents;
+- evaluations collected per matrix;
+- count for every one of the 104 directed relationships;
+- relationships below the configured minimum evaluation threshold;
+- separate access to historical seven-set exports.
+
+Current downloads:
+
+- `fuzzy_dematel_hierarchical_responses.csv`: analysis-ready long rows from
+  completed respondents only;
+- `fuzzy_dematel_hierarchical_dataset.xlsx`, containing:
+  - `Responses_Long`
+  - `Responses_Wide` (one respondent per row, 104 linguistic columns)
+  - `Relationship_Coverage`
+  - `Respondent_Summary`
+  - `Matrix_Summary`
+  - `Cultural_Counts`, `Economic_Counts`, `Strategic_Counts`, `Dimension_Counts`
+  - `Criteria_Definitions`
+  - `Metadata`
+
+Each long row includes the anonymous respondent ID, expert code, matrix ID, source
+and target codes/names, linguistic response, all three TFN values and timestamp.
+No missing response is calculated or invented.
+
+The future mathematical module can reconstruct all four TFN matrices for one
+completed respondent without changing the database:
+
+```python
+from fuzzy_dematel import (
+    hierarchical_tfn_matrices_from_long,
+    load_hierarchical_export,
+)
+
+data = load_hierarchical_export("fuzzy_dematel_hierarchical_responses.csv")
+matrices = hierarchical_tfn_matrices_from_long(data, respondent_id="...")
+```
+
+These functions only validate and reshape input. Fuzzy DEMATEL normalization,
+aggregation, defuzzification and causal calculations are intentionally not
+implemented.
 
 ## Tests and quality checks
 
@@ -125,50 +187,21 @@ pytest
 ruff check .
 ```
 
-The test suite checks exact 306-pair coverage, set sizes, source/target balance,
-all response controls, autosave, completion, TFN mapping, administrator exports,
-Excel sheets, and round-trip loading through `fuzzy_dematel.py`.
-
-## Export contract
-
-Open `?admin=1` and authenticate to download:
-
-- `fuzzy_dematel_all_responses.csv`: all raw responses from completed respondents.
-- `fuzzy_dematel_complete_dataset.xlsx`, containing:
-  - `Responses_Long`
-  - `Relationship_Coverage`
-  - `Evaluation_Count_Matrix`
-  - `Set_Summary`
-  - `Factor_Definitions`
-  - `Metadata`
-
-The relationship coverage sheet includes every off-diagonal direction even when
-its count is zero. Rows are source variables and columns are target variables.
-The export contains raw evaluations only; no fuzzy aggregation is performed.
-
-Example future-engine input:
-
-```python
-from fuzzy_dematel import load_distributed_export
-
-data = load_distributed_export("fuzzy_dematel_all_responses.csv")
-```
-
-These functions validate and load data only. Mathematical Fuzzy DEMATEL
-normalization, total-relation matrices, defuzzification, and cause/effect
-calculations are intentionally not implemented.
+The tests verify the exact `30 + 12 + 56 + 6 = 104` relationship contract, no
+diagonal or cross-dimensional criterion pairs, all five TFN mappings, autosave UI,
+visible cell acronyms, navigation, completion blocking, Supabase adapter behavior,
+CSV/Excel readability and reconstruction into `(6,6)`, `(4,4)`, `(8,8)` and
+`(3,3)` TFN arrays.
 
 ## Streamlit Community Cloud deployment
 
-1. Push this repository to a private Git host.
-2. Create a Streamlit Community Cloud app with `app.py` as the entry point.
-3. Paste the contents of `.streamlit/secrets.toml` into the app's encrypted
-   Secrets settings.
-4. Add the study metadata values to the app environment.
-5. Confirm the factor definitions and approved consent wording.
-6. Complete seven disposable pilots and confirm that every set is assigned once.
-7. Verify autosave, refresh resume, submission, dashboard counts, and exports.
+1. Run `sql/hierarchical_migration.sql` in the existing Supabase SQL editor.
+2. Push this repository to the GitHub branch used by Streamlit Community Cloud.
+3. Keep the existing app entry point as `app.py` and Python runtime as 3.12.
+4. Confirm encrypted Supabase and administrator secrets remain configured.
+5. Reboot the Streamlit app and complete a disposable 104-answer pilot.
+6. Verify refresh recovery, final submission, dashboard counts, CSV and Excel.
 
-For live data collection, keep the repository private, restrict Supabase
-dashboard membership, define a retention plan, and document backups under the
-research data-management protocol.
+For live dissertation data, restrict Supabase dashboard membership, maintain a
+backup/retention plan and document the process in the approved data-management
+protocol.

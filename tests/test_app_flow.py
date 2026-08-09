@@ -1,4 +1,4 @@
-"""Application-level test of the guarded distributed questionnaire flow."""
+"""Application-level test of the guarded hierarchical questionnaire flow."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from streamlit.testing.v1 import AppTest
 
 import pages.matrix as matrix_page
 import pages.submit as submit_page
+from hierarchical_questionnaire import all_hierarchical_relationships
 
 
 class FakeQuestionnaireRepository:
@@ -16,11 +17,11 @@ class FakeQuestionnaireRepository:
     def __init__(self) -> None:
         self.responses: list[dict[str, Any]] = []
 
-    def assign_respondent(self, respondent_id, expert_code):
+    def start_questionnaire(self, respondent_id, expert_code):
         return {
             "respondent_id": str(respondent_id),
             "expert_code": expert_code,
-            "set_id": 1,
+            "design_version": "hierarchical_v1",
             "status": "in_progress",
             "started_at": "2026-08-02T12:00:00+00:00",
             "completed_at": None,
@@ -34,17 +35,18 @@ class FakeQuestionnaireRepository:
             existing
             for existing in self.responses
             if not (
-                existing["from_factor"] == record["from_factor"]
-                and existing["to_factor"] == record["to_factor"]
+                existing["matrix_id"] == record["matrix_id"]
+                and existing["source_code"] == record["source_code"]
+                and existing["target_code"] == record["target_code"]
             )
         ]
         self.responses.append(dict(record))
 
-    def complete_assignment(self, respondent_id):
+    def complete_questionnaire(self, respondent_id):
         return {
             "respondent_id": str(respondent_id),
             "expert_code": "EXP-PILOT01",
-            "set_id": 1,
+            "design_version": "hierarchical_v1",
             "status": "completed",
             "started_at": "2026-08-02T12:00:00+00:00",
             "completed_at": "2026-08-02T12:10:00+00:00",
@@ -57,9 +59,7 @@ def _button_by_label(app: AppTest, label: str):
     return matches[0]
 
 
-def test_complete_ui_flow_uses_one_readable_autosaved_question(
-    monkeypatch,
-) -> None:
+def test_complete_hierarchical_ui_flow_and_visible_cell_states(monkeypatch) -> None:
     repository = FakeQuestionnaireRepository()
     monkeypatch.setattr(matrix_page, "get_repository", lambda: repository)
     monkeypatch.setattr(submit_page, "get_repository", lambda: repository)
@@ -72,28 +72,36 @@ def test_complete_ui_flow_uses_one_readable_autosaved_question(
     app.text_input(key="expert_code_input").set_value("EXP-PILOT01").run()
     app.button(key="expert_next").click().run()
 
-    assert app.session_state["assigned_set_id"] == 1
+    assert app.session_state["questionnaire"]["design_version"] == "hierarchical_v1"
     assert len(app.radio) == 1
-    assert len(app.selectbox) == 0
-    assert any("Question 1 of 44" in item.value for item in app.markdown)
+    assert not app.exception
+    assert any(
+        "Consumer-Cultural & Behavioural" in title.value
+        for title in app.title
+    )
 
-    fuzzy_options = ["VL", "LI", "I", "HI", "VH"]
-    for question_index in range(44):
-        response = fuzzy_options[question_index % len(fuzzy_options)]
+    for response in ("VL", "LI", "I", "HI", "VH"):
         app.radio[0].set_value(response).run()
-        selected_markup = [markdown.value for markdown in app.markdown]
-        assert any(
-            "selected-response completed" in markup
-            and f"<strong>{response}</strong>" in markup
-            for markup in selected_markup
-        )
-        if question_index < 43:
-            _button_by_label(app, "Next question →").click().run()
+        cell = app.button(key="cell_cultural_C1_C2")
+        assert cell.label == response
+        assert response in app.session_state["judgments"].values()
+        assert not app.exception
 
-    assert len(app.session_state["judgments"]) == 44
-    assert len(repository.responses) == 44
-    _button_by_label(app, "Review responses").click().run()
-    submit_button = _button_by_label(app, "Submit response set")
+    for expected_title in (
+        "Economic & Market",
+        "Airline Strategic & Operational",
+        "Relationships Between Dimensions",
+    ):
+        _button_by_label(app, "Continue →").click().run()
+        assert any(expected_title in title.value for title in app.title)
+
+    app.session_state["judgments"] = {
+        relationship.key: "I"
+        for relationship in all_hierarchical_relationships()
+    }
+    app.run()
+    _button_by_label(app, "Review questionnaire").click().run()
+    submit_button = _button_by_label(app, "Submit expert evaluation")
     assert submit_button.disabled is False
     submit_button.click().run()
 

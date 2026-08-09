@@ -10,7 +10,7 @@ from typing import Any
 import streamlit as st
 
 from config import MIN_EVALUATIONS_DEFAULT
-from database import DistributedQuestionnaireRepository, SupabaseSettings
+from database import HierarchicalQuestionnaireRepository, SupabaseSettings
 
 
 def server_secrets() -> dict[str, Any]:
@@ -28,19 +28,23 @@ def _connect_repository(
     key: str,
     table_name: str,
     assignment_table: str,
+    hierarchical_assignment_table: str,
+    hierarchical_response_table: str,
     schema_name: str,
-) -> DistributedQuestionnaireRepository:
+) -> HierarchicalQuestionnaireRepository:
     settings = SupabaseSettings(
         url=url,
         key=key,
         table_name=table_name,
         assignment_table=assignment_table,
+        hierarchical_assignment_table=hierarchical_assignment_table,
+        hierarchical_response_table=hierarchical_response_table,
         schema_name=schema_name,
     )
-    return DistributedQuestionnaireRepository.connect(settings)
+    return HierarchicalQuestionnaireRepository.connect(settings)
 
 
-def get_repository() -> DistributedQuestionnaireRepository:
+def get_repository() -> HierarchicalQuestionnaireRepository:
     """Return the cached production questionnaire repository."""
 
     settings = SupabaseSettings.from_sources(server_secrets())
@@ -49,6 +53,8 @@ def get_repository() -> DistributedQuestionnaireRepository:
         settings.key,
         settings.table_name,
         settings.assignment_table,
+        settings.hierarchical_assignment_table,
+        settings.hierarchical_response_table,
         settings.schema_name,
     )
 
