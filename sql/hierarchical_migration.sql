@@ -214,7 +214,7 @@ begin
         respondent_id, expert_code
     ) values (
         p_respondent_id, p_expert_code
-    ) on conflict (respondent_id) do nothing;
+    ) on conflict on constraint hierarchical_questionnaires_pkey do nothing;
 
     if exists (
         select 1
