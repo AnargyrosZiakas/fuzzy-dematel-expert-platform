@@ -40,9 +40,9 @@ INVITATION_PARAGRAPHS: Final[tuple[str, ...]] = (
         "This questionnaire applies the Fuzzy DEMATEL method to examine the "
         "causal relationships among cultural, economic and strategic factors "
         "associated with sustainable airline strategy. Based on your professional "
-        "knowledge and experience, you will be asked to evaluate the extent to "
-        "which each factor directly influences the others. There are no right or "
-        "wrong answers."
+        "knowledge and experience, you will evaluate direct relationships within "
+        "three groups of criteria and then among the three dimensions themselves. "
+        "There are no right or wrong answers."
     ),
     (
         "Participation is entirely voluntary, and you may leave the questionnaire "
@@ -97,9 +97,9 @@ EVALUATION_INSTRUCTIONS: Final[tuple[str, ...]] = (
         "direction must be evaluated separately."
     ),
     (
-        "In the online questionnaire, each screen presents one source variable and "
-        "one target variable from your assigned relationship set. Self-influence "
-        "relationships are excluded and are therefore not applicable."
+        "The online questionnaire presents four matrices in sequence. The row is "
+        "always the cause and the column is always the affected factor. "
+        "Self-influence relationships are disabled and are not answers."
     ),
     (
         "There are no right or wrong answers. Please select the response that most "

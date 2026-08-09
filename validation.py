@@ -13,10 +13,17 @@ from config import (
     REQUIRED_COMPARISONS,
     RESPONSE_OPTIONS,
     SCALE_BY_CODE,
+    SCALE_CODES,
+)
+from hierarchical_questionnaire import (
+    all_hierarchical_relationships,
+    relationships_for_matrix,
 )
 from models import (
     DirectedRelationship,
     DistributedResponseRecord,
+    HierarchicalRelationship,
+    HierarchicalResponseRecord,
     MatrixValidationResult,
     ResponseRecord,
 )
@@ -29,6 +36,14 @@ def comparison_key(from_factor: str, to_factor: str) -> str:
     """Return the stable session-state key for an ordered factor pair."""
 
     return f"{from_factor}|{to_factor}"
+
+
+def hierarchical_comparison_key(
+    matrix_id: str, source_code: str, target_code: str
+) -> str:
+    """Return the stable answer key for one hierarchical relationship."""
+
+    return f"{matrix_id}|{source_code}|{target_code}"
 
 
 def validate_expert_code(raw_code: str) -> tuple[bool, str, str]:
@@ -104,6 +119,103 @@ def validate_assigned_responses(
         required=len(relationships),
         missing=tuple(missing),
         invalid=tuple(invalid),
+    )
+
+
+def validate_hierarchical_matrix(
+    matrix_id: str,
+    judgments: Mapping[str, str | None],
+) -> MatrixValidationResult:
+    """Validate every required off-diagonal answer in one configured matrix."""
+
+    relationships = relationships_for_matrix(matrix_id)
+    missing: list[tuple[str, str]] = []
+    invalid: list[tuple[str, str]] = []
+    completed = 0
+    for relationship in relationships:
+        value = judgments.get(relationship.key)
+        pair = (relationship.source_code, relationship.target_code)
+        if value is None or value == "":
+            missing.append(pair)
+        elif value not in SCALE_CODES:
+            invalid.append(pair)
+        else:
+            completed += 1
+    return MatrixValidationResult(
+        completed=completed,
+        required=len(relationships),
+        missing=tuple(missing),
+        invalid=tuple(invalid),
+    )
+
+
+def validate_hierarchical_questionnaire(
+    judgments: Mapping[str, str | None],
+) -> MatrixValidationResult:
+    """Validate all and only the 104 relationships in the hierarchical design."""
+
+    relationships = all_hierarchical_relationships()
+    missing: list[tuple[str, str]] = []
+    invalid: list[tuple[str, str]] = []
+    completed = 0
+    for relationship in relationships:
+        value = judgments.get(relationship.key)
+        pair = (relationship.source_code, relationship.target_code)
+        if value is None or value == "":
+            missing.append(pair)
+        elif value not in SCALE_CODES:
+            invalid.append(pair)
+        else:
+            completed += 1
+    return MatrixValidationResult(
+        completed=completed,
+        required=len(relationships),
+        missing=tuple(missing),
+        invalid=tuple(invalid),
+    )
+
+
+def build_hierarchical_response_record(
+    *,
+    respondent_id: UUID,
+    expert_code: str,
+    relationship: HierarchicalRelationship,
+    linguistic_value: str,
+    responded_at: datetime | None = None,
+) -> HierarchicalResponseRecord:
+    """Build one validated, analysis-ready hierarchical autosave record."""
+
+    is_code_valid, normalized_code, code_error = validate_expert_code(expert_code)
+    if not is_code_valid:
+        raise ValueError(code_error)
+    if relationship.source_code == relationship.target_code:
+        raise ValueError("Diagonal relationships cannot be stored.")
+    allowed_keys = {
+        configured.key for configured in all_hierarchical_relationships()
+    }
+    if relationship.key not in allowed_keys:
+        raise ValueError("This relationship is not part of the hierarchical design.")
+    if linguistic_value not in SCALE_CODES:
+        raise ValueError("Select one of the five valid linguistic responses.")
+
+    lower, modal, upper = SCALE_BY_CODE[linguistic_value].tfn
+    timestamp = responded_at or datetime.now(UTC)
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+
+    return HierarchicalResponseRecord(
+        respondent_id=str(respondent_id),
+        expert_code=normalized_code,
+        matrix_id=relationship.matrix_id,
+        source_code=relationship.source_code,
+        source_name=relationship.source_name,
+        target_code=relationship.target_code,
+        target_name=relationship.target_name,
+        linguistic_value=linguistic_value,
+        tfn_l=lower,
+        tfn_m=modal,
+        tfn_u=upper,
+        responded_at=timestamp.astimezone(UTC).isoformat(),
     )
 
 

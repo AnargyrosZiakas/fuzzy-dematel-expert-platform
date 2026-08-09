@@ -13,7 +13,15 @@ import numpy as np
 import pandas as pd
 
 from config import FACTOR_CODES
-from export import ADMIN_RESPONSE_COLUMNS, LONG_COLUMNS
+from export import (
+    ADMIN_RESPONSE_COLUMNS,
+    HIERARCHICAL_RESPONSE_COLUMNS,
+    LONG_COLUMNS,
+)
+from hierarchical_questionnaire import (
+    all_hierarchical_relationships,
+    matrix_definitions,
+)
 from questionnaire_sets import all_relationships
 
 
@@ -114,3 +122,82 @@ def load_distributed_export(path: str | Path) -> pd.DataFrame:
         if expected_set_by_pair.get(pair) != int(row.set_id):
             raise ValueError("A response does not match the audited set partition.")
     return frame[ADMIN_RESPONSE_COLUMNS].copy()
+
+
+def load_hierarchical_export(path: str | Path) -> pd.DataFrame:
+    """Read and validate raw four-matrix responses without aggregating them."""
+
+    source = Path(path)
+    if source.suffix.lower() == ".csv":
+        frame = pd.read_csv(source)
+    elif source.suffix.lower() in {".xlsx", ".xlsm"}:
+        frame = pd.read_excel(source, sheet_name="Responses_Long")
+    else:
+        raise ValueError("Use a .csv or .xlsx hierarchical-response export.")
+
+    missing_columns = set(HIERARCHICAL_RESPONSE_COLUMNS).difference(frame.columns)
+    if missing_columns:
+        raise ValueError(
+            f"Hierarchical export is missing columns: {sorted(missing_columns)}"
+        )
+    duplicate_columns = [
+        "respondent_id",
+        "matrix_id",
+        "source_code",
+        "target_code",
+    ]
+    if frame.duplicated(duplicate_columns).any():
+        raise ValueError("A respondent has duplicate hierarchical relationships.")
+    allowed = {
+        (
+            relationship.matrix_id,
+            relationship.source_code,
+            relationship.target_code,
+        )
+        for relationship in all_hierarchical_relationships()
+    }
+    observed = set(
+        zip(
+            frame["matrix_id"],
+            frame["source_code"],
+            frame["target_code"],
+            strict=True,
+        )
+    )
+    if not observed.issubset(allowed):
+        raise ValueError(
+            "Export contains a diagonal, cross-dimensional, or unknown relationship."
+        )
+    return frame[HIERARCHICAL_RESPONSE_COLUMNS].copy()
+
+
+def hierarchical_tfn_matrices_from_long(
+    frame: pd.DataFrame,
+    respondent_id: str,
+) -> dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]:
+    """Reconstruct the four TFN matrices for one completed anonymous expert."""
+
+    respondent = frame[frame["respondent_id"].astype(str) == str(respondent_id)]
+    result: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+    for matrix in matrix_definitions():
+        subset = respondent[respondent["matrix_id"] == matrix.id]
+        if len(subset) != matrix.required_comparisons:
+            raise ValueError(
+                f"Respondent is missing answers in the {matrix.id} matrix."
+            )
+        codes = [criterion.code for criterion in matrix.criteria]
+        arrays: list[np.ndarray] = []
+        for value_column in ("tfn_l", "tfn_m", "tfn_u"):
+            wide = subset.pivot(
+                index="source_code",
+                columns="target_code",
+                values=value_column,
+            ).reindex(index=codes, columns=codes)
+            for code in codes:
+                wide.loc[code, code] = 0.0
+            values = wide.to_numpy(dtype=float)
+            if values.shape != (len(codes), len(codes)) or np.isnan(values).any():
+                raise ValueError(f"Invalid {matrix.id} {value_column} matrix.")
+            arrays.append(values)
+        result[matrix.id] = (arrays[0], arrays[1], arrays[2])
+    return result

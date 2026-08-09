@@ -35,11 +35,11 @@ def main() -> None:
         page_title=APP_TITLE,
         page_icon=APP_ICON,
         layout="wide",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="auto",
         menu_items={
             "About": (
-                "Scientific expert-response instrument for an 18×18 Fuzzy "
-                "DEMATEL influence matrix."
+                "Scientific expert-response instrument for a four-stage "
+                "hierarchical Fuzzy DEMATEL evaluation."
             )
         },
     )
@@ -87,7 +87,7 @@ def main() -> None:
 
     st.markdown(
         "<p class='footer-note'>Fuzzy DEMATEL Expert Evaluation Platform · "
-        "Balanced directed-relationship research instrument</p>",
+        "Hierarchical directed-relationship research instrument</p>",
         unsafe_allow_html=True,
     )
 
