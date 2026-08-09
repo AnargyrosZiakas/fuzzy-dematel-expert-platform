@@ -5,7 +5,7 @@ from __future__ import annotations
 import streamlit as st
 
 from components.layout import navigation_buttons, page_header
-from config import MATRIX_SIZE, QUESTIONNAIRE_SET_COUNT
+from config import HIERARCHICAL_REQUIRED_COMPARISONS, MATRIX_SIZE
 from research_content import (
     DOCTORAL_RESEARCH_TITLE,
     EXPECTED_COMPLETION_TIME,
@@ -30,14 +30,15 @@ def render() -> None:
           <h3>Invitation to participate</h3>
           <p>This expert evaluation forms part of the doctoral research entitled:</p>
           <p class="study-title">“{DOCTORAL_RESEARCH_TITLE}”</p>
-          <p>The research covers a complete scientific influence matrix across all
-          respondents. You will be automatically assigned one balanced subset and
-          will assess one precise question throughout:</p>
-          <div class="orientation-card">To what extent does the
-          <strong>source variable</strong> influence the
-          <strong>target variable</strong>?</div>
-          <p>Your responses are directional: C1 → C2 and C2 → C1 are separate
-          judgements. Your progress is saved automatically after each selection.</p>
+          <p>You will complete four short, clearly separated Fuzzy DEMATEL matrices:
+          three criterion-level sections followed by relationships among the three
+          research dimensions.</p>
+          <div class="orientation-card">Please indicate how much the
+          <strong>ROW factor</strong> influences the
+          <strong>COLUMN factor</strong>.</div>
+          <p>Each direction is evaluated separately. Cross-dimensional individual
+          criterion pairs are not asked, and every saved answer can be recovered
+          using your anonymous progress link.</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -50,13 +51,13 @@ def render() -> None:
         unsafe_allow_html=True,
     )
     second.markdown(
-        "<div class='metric-number'>43–44</div>"
-        "<div class='metric-caption'>assigned evaluations</div>",
+        f"<div class='metric-number'>{HIERARCHICAL_REQUIRED_COMPARISONS}</div>"
+        "<div class='metric-caption'>directed evaluations</div>",
         unsafe_allow_html=True,
     )
     third.markdown(
-        f"<div class='metric-number'>{QUESTIONNAIRE_SET_COUNT}</div>"
-        f"<div class='metric-caption'>balanced sets · "
+        "<div class='metric-number'>4</div>"
+        f"<div class='metric-caption'>manageable sections · "
         f"{EXPECTED_COMPLETION_TIME}</div>",
         unsafe_allow_html=True,
     )

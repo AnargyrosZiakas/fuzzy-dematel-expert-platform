@@ -22,6 +22,10 @@ def _validate_and_store_code() -> bool:
     if not is_valid:
         st.error(message)
         return False
+    questionnaire = st.session_state.get("questionnaire") or {}
+    if questionnaire and normalized != questionnaire.get("expert_code"):
+        st.error("This saved questionnaire is linked to a different expert code.")
+        return False
     st.session_state["expert_code"] = normalized
     return True
 
@@ -61,6 +65,12 @@ def render() -> None:
     st.write("")
     if "expert_code_input" not in st.session_state:
         st.session_state["expert_code_input"] = st.session_state["expert_code"]
+    questionnaire_started = bool(st.session_state.get("questionnaire"))
+    if questionnaire_started:
+        st.info(
+            "This expert code is locked because questionnaire progress has already "
+            "been saved."
+        )
     input_column, button_column = st.columns([3, 1])
     with input_column:
         st.text_input(
@@ -68,6 +78,7 @@ def render() -> None:
             key="expert_code_input",
             placeholder="Example: EXP-7K9M2Q4R",
             max_chars=64,
+            disabled=questionnaire_started,
             on_change=_persist_code,
             help="Allowed: letters, numbers, hyphens, and underscores.",
         )
@@ -76,6 +87,7 @@ def render() -> None:
         st.button(
             "Generate code",
             key="generate_expert_code",
+            disabled=questionnaire_started,
             on_click=_generate_code,
             use_container_width=True,
         )
