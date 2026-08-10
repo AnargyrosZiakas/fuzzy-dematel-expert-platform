@@ -21,7 +21,6 @@ RESEARCHER_NAME: Final[str] = "Anargyros Ziakas"
 RESEARCHER_ROLE: Final[str] = "PhD Candidate, University of the Aegean"
 SUPERVISOR_NAME: Final[str] = "Professor Andreas Papatheodorou"
 CONTACT_EMAIL: Final[str] = "anargyrosziakas@aegean.gr"
-EXPECTED_COMPLETION_TIME: Final[str] = "approximately 10 minutes"
 
 INVITATION_PARAGRAPHS: Final[tuple[str, ...]] = (
     (
@@ -47,8 +46,7 @@ INVITATION_PARAGRAPHS: Final[tuple[str, ...]] = (
     (
         "Participation is entirely voluntary, and you may leave the questionnaire "
         "at any time before submitting your responses, without providing a reason "
-        "or experiencing any negative consequences. Completion is expected to take "
-        "approximately 10 minutes."
+        "or experiencing any negative consequences."
     ),
     (
         "The questionnaire is designed to collect responses anonymously. You will "

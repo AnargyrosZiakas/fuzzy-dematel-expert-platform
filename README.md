@@ -12,9 +12,9 @@ The respondent completes the following fixed matrices:
 |---|---|---:|---:|
 | 1 | Consumer-Cultural & Behavioural (`C1–C6`) | 6 × 6 | 30 |
 | 2 | Economic & Market (`E1–E4`) | 4 × 4 | 12 |
-| 3 | Airline Strategic & Operational (`S1–S8`) | 8 × 8 | 56 |
+| 3 | Airline Strategic & Operational (`S1–S7`) | 7 × 7 | 42 |
 | 4 | Relationships Between Dimensions (`C`, `E`, `S`) | 3 × 3 | 6 |
-|  | **Total** |  | **104** |
+|  | **Total** |  | **90** |
 
 Diagonal self-influence cells are disabled and never stored as respondent answers.
 Level 1 contains only within-dimension criterion relationships: individual
@@ -60,7 +60,7 @@ app.py                         Streamlit entry point and guarded page router
 config.py                      Instrument constants and exact TFN scale
 research_content.py            Approved participant-facing research wording
 models.py                      Typed domain records and matrix definitions
-hierarchical_questionnaire.py  Data-driven 30 + 12 + 56 + 6 pair catalogue
+hierarchical_questionnaire.py  Data-driven 30 + 12 + 42 + 6 pair catalogue
 validation.py                  Expert-code, relationship and completeness checks
 database.py                    Supabase sessions, autosave, completion and admin I/O
 services.py                    Secure Streamlit/Supabase composition
@@ -78,10 +78,12 @@ pages/
   expert_code.py
   matrix.py
   submit.py
-data/factors.csv               Ordered criterion names and full definitions
+data/factors.csv               Historical 18-variable definitions
+data/hierarchical_factors.csv  Current 17-criterion names and definitions
 sql/
   schema.sql                   Historical seven-set schema retained for compatibility
-  hierarchical_migration.sql   Versioned four-matrix schema and completion RPC
+  hierarchical_migration.sql   Fresh-install four-matrix schema and completion RPC
+  hierarchical_v2_migration.sql  Safe 104-to-90 relationship upgrade
 tests/                         Scientific, UI, storage and export verification
 ```
 
@@ -105,10 +107,10 @@ Do not commit `.streamlit/secrets.toml`; it is ignored by Git.
 
 ## Supabase migration
 
-For the existing deployed project, run only:
+For an existing `hierarchical_v1` deployment, run:
 
 ```text
-sql/hierarchical_migration.sql
+sql/hierarchical_v2_migration.sql
 ```
 
 For a completely new Supabase project, run `sql/schema.sql` first and then
@@ -129,10 +131,10 @@ Optional table-name overrides are documented in
 server; it must never be committed or exposed in client-side code. Row-level
 security denies direct `anon` and `authenticated` access.
 
-The migration seeds exactly 104 allowed relationships. Foreign keys prevent
+The current design seeds exactly 90 allowed relationships. Foreign keys prevent
 diagonal, cross-dimensional or unknown pairs. A trigger verifies respondent code,
 criterion names and mutable session status. The completion RPC rejects any session
-without exactly 104 saved responses and makes completed answers immutable.
+without exactly 90 saved responses and makes completed answers immutable.
 
 ## Administrator dashboard and export
 
@@ -141,7 +143,7 @@ dashboard reports:
 
 - completed and in-progress anonymous respondents;
 - evaluations collected per matrix;
-- count for every one of the 104 directed relationships;
+- count for every one of the 90 directed relationships;
 - relationships below the configured minimum evaluation threshold;
 - separate access to historical seven-set exports.
 
@@ -151,7 +153,7 @@ Current downloads:
   completed respondents only;
 - `fuzzy_dematel_hierarchical_dataset.xlsx`, containing:
   - `Responses_Long`
-  - `Responses_Wide` (one respondent per row, 104 linguistic columns)
+  - `Responses_Wide` (one respondent per row, 90 linguistic columns)
   - `Relationship_Coverage`
   - `Respondent_Summary`
   - `Matrix_Summary`
@@ -187,19 +189,20 @@ pytest
 ruff check .
 ```
 
-The tests verify the exact `30 + 12 + 56 + 6 = 104` relationship contract, no
+The tests verify the exact `30 + 12 + 42 + 6 = 90` relationship contract, no
 diagonal or cross-dimensional criterion pairs, all five TFN mappings, autosave UI,
 visible cell acronyms, navigation, completion blocking, Supabase adapter behavior,
-CSV/Excel readability and reconstruction into `(6,6)`, `(4,4)`, `(8,8)` and
+CSV/Excel readability and reconstruction into `(6,6)`, `(4,4)`, `(7,7)` and
 `(3,3)` TFN arrays.
 
 ## Streamlit Community Cloud deployment
 
-1. Run `sql/hierarchical_migration.sql` in the existing Supabase SQL editor.
+1. Run `sql/hierarchical_v2_migration.sql` for an existing v1 deployment, or
+   `sql/hierarchical_migration.sql` for a fresh hierarchical deployment.
 2. Push this repository to the GitHub branch used by Streamlit Community Cloud.
 3. Keep the existing app entry point as `app.py` and Python runtime as 3.12.
 4. Confirm encrypted Supabase and administrator secrets remain configured.
-5. Reboot the Streamlit app and complete a disposable 104-answer pilot.
+5. Reboot the Streamlit app and complete a disposable 90-answer pilot.
 6. Verify refresh recovery, final submission, dashboard counts, CSV and Excel.
 
 For live dissertation data, restrict Supabase dashboard membership, maintain a
