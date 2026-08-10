@@ -33,7 +33,7 @@ def _return_to_matrix(index: int) -> None:
 
 
 def _complete_submission() -> None:
-    """Verify all 104 answers and complete the database session atomically."""
+    """Verify all 90 answers and complete the database session atomically."""
 
     respondent_id = st.session_state.get("respondent_id")
     if not respondent_id or not st.session_state.get("questionnaire"):
@@ -158,7 +158,7 @@ def render() -> None:
 
     if overall.is_valid:
         st.success(
-            "Validation passed: all 104 required directed relationships are saved."
+            "Validation passed: all 90 required directed relationships are saved."
         )
     else:
         st.warning(

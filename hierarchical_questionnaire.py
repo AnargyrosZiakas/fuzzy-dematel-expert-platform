@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from config import HIERARCHICAL_REQUIRED_COMPARISONS, load_factor_catalogue
+from config import (
+    HIERARCHICAL_REQUIRED_COMPARISONS,
+    load_hierarchical_factor_catalogue,
+)
 from models import (
     HierarchicalRelationship,
     MatrixCriterion,
@@ -30,7 +33,7 @@ _MATRIX_METADATA = (
         "strategic",
         "Airline Strategic & Operational",
         "Strategic & Operational",
-        ("S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8"),
+        ("S1", "S2", "S3", "S4", "S5", "S6", "S7"),
     ),
 )
 
@@ -50,8 +53,8 @@ _DIMENSION_CRITERIA = (
     MatrixCriterion(
         "S",
         "Airline Strategic & Operational",
-        "The airline strategy, capability, stakeholder and compliance dimension "
-        "represented by criteria S1–S8.",
+        "The airline strategy, capability, communication and compliance dimension "
+        "represented by criteria S1–S7.",
     ),
 )
 
@@ -60,7 +63,9 @@ _DIMENSION_CRITERIA = (
 def matrix_definitions() -> tuple[MatrixDefinition, ...]:
     """Build and validate the four matrices from the canonical factor catalogue."""
 
-    factor_by_code = {item.code: item for item in load_factor_catalogue()}
+    factor_by_code = {
+        item.code: item for item in load_hierarchical_factor_catalogue()
+    }
     matrices: list[MatrixDefinition] = []
     for matrix_id, label, short_label, codes in _MATRIX_METADATA:
         criteria = tuple(
@@ -88,23 +93,23 @@ def matrix_definitions() -> tuple[MatrixDefinition, ...]:
 def validate_hierarchical_design(
     matrices: tuple[MatrixDefinition, ...],
 ) -> None:
-    """Raise when matrix membership or the fixed 104-pair contract is violated."""
+    """Raise when matrix membership or the fixed 90-pair contract is violated."""
 
     if tuple(matrix.id for matrix in matrices) != MATRIX_IDS:
         raise ValueError("Hierarchical matrix IDs or order have changed.")
-    expected_sizes = (6, 4, 8, 3)
+    expected_sizes = (6, 4, 7, 3)
     if tuple(len(matrix.criteria) for matrix in matrices) != expected_sizes:
-        raise ValueError("Hierarchical matrix sizes must be 6, 4, 8, and 3.")
+        raise ValueError("Hierarchical matrix sizes must be 6, 4, 7, and 3.")
     criterion_codes = [
         criterion.code
         for matrix in matrices[:3]
         for criterion in matrix.criteria
     ]
-    if len(criterion_codes) != 18 or len(set(criterion_codes)) != 18:
+    if len(criterion_codes) != 17 or len(set(criterion_codes)) != 17:
         raise ValueError("Each criterion must belong to exactly one Level 1 matrix.")
     total = sum(matrix.required_comparisons for matrix in matrices)
     if total != HIERARCHICAL_REQUIRED_COMPARISONS:
-        raise ValueError("The hierarchical design must contain exactly 104 pairs.")
+        raise ValueError("The hierarchical design must contain exactly 90 pairs.")
 
 
 def get_matrix_definition(matrix_id: str) -> MatrixDefinition:
@@ -118,7 +123,7 @@ def get_matrix_definition(matrix_id: str) -> MatrixDefinition:
 
 @lru_cache(maxsize=1)
 def all_hierarchical_relationships() -> tuple[HierarchicalRelationship, ...]:
-    """Return all 104 allowed relationships in stable matrix/row order."""
+    """Return all 90 allowed relationships in stable matrix/row order."""
 
     relationships: list[HierarchicalRelationship] = []
     for matrix in matrix_definitions():

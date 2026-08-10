@@ -499,7 +499,7 @@ class HierarchicalQuestionnaireRepository:
     def complete_questionnaire(
         self, respondent_id: UUID
     ) -> HierarchicalQuestionnaireRecord:
-        """Verify all 104 answers and atomically mark the session completed."""
+        """Verify all 90 answers and atomically mark the session completed."""
 
         try:
             response = (

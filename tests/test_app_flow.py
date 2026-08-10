@@ -21,7 +21,7 @@ class FakeQuestionnaireRepository:
         return {
             "respondent_id": str(respondent_id),
             "expert_code": expert_code,
-            "design_version": "hierarchical_v1",
+            "design_version": "hierarchical_v2",
             "status": "in_progress",
             "started_at": "2026-08-02T12:00:00+00:00",
             "completed_at": None,
@@ -46,7 +46,7 @@ class FakeQuestionnaireRepository:
         return {
             "respondent_id": str(respondent_id),
             "expert_code": "EXP-PILOT01",
-            "design_version": "hierarchical_v1",
+            "design_version": "hierarchical_v2",
             "status": "completed",
             "started_at": "2026-08-02T12:00:00+00:00",
             "completed_at": "2026-08-02T12:10:00+00:00",
@@ -72,7 +72,7 @@ def test_complete_hierarchical_ui_flow_and_visible_cell_states(monkeypatch) -> N
     app.text_input(key="expert_code_input").set_value("EXP-PILOT01").run()
     app.button(key="expert_next").click().run()
 
-    assert app.session_state["questionnaire"]["design_version"] == "hierarchical_v1"
+    assert app.session_state["questionnaire"]["design_version"] == "hierarchical_v2"
     assert len(app.radio) == 1
     assert not app.exception
     assert any(

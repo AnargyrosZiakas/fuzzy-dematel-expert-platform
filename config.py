@@ -18,7 +18,11 @@ from research_content import (
 
 BASE_DIR: Final[Path] = Path(__file__).resolve().parent
 FACTOR_DEFINITIONS_PATH: Final[Path] = BASE_DIR / "data" / "factors.csv"
+HIERARCHICAL_FACTOR_DEFINITIONS_PATH: Final[Path] = (
+    BASE_DIR / "data" / "hierarchical_factors.csv"
+)
 
+# Retained for the historical 18-variable and seven-set export paths.
 FACTOR_CODES: Final[tuple[str, ...]] = (
     "C1",
     "C2",
@@ -38,6 +42,28 @@ FACTOR_CODES: Final[tuple[str, ...]] = (
     "S6",
     "S7",
     "S8",
+)
+
+# Current hierarchical instrument: former S8 is renumbered to S7 and the
+# former stakeholder-commitment criterion is not part of the questionnaire.
+HIERARCHICAL_FACTOR_CODES: Final[tuple[str, ...]] = (
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5",
+    "C6",
+    "E1",
+    "E2",
+    "E3",
+    "E4",
+    "S1",
+    "S2",
+    "S3",
+    "S4",
+    "S5",
+    "S6",
+    "S7",
 )
 
 
@@ -78,8 +104,9 @@ DIAGONAL_CELLS: Final[int] = MATRIX_SIZE
 REQUIRED_COMPARISONS: Final[int] = TOTAL_CELLS - DIAGONAL_CELLS
 QUESTIONNAIRE_SET_COUNT: Final[int] = 7
 MIN_EVALUATIONS_DEFAULT: Final[int] = 3
-HIERARCHICAL_REQUIRED_COMPARISONS: Final[int] = 104
-HIERARCHICAL_DESIGN_VERSION: Final[str] = "hierarchical_v1"
+HIERARCHICAL_FACTOR_COUNT: Final[int] = len(HIERARCHICAL_FACTOR_CODES)
+HIERARCHICAL_REQUIRED_COMPARISONS: Final[int] = 90
+HIERARCHICAL_DESIGN_VERSION: Final[str] = "hierarchical_v2"
 DEFAULT_HIERARCHICAL_ASSIGNMENT_TABLE: Final[str] = (
     "hierarchical_questionnaires"
 )
@@ -137,7 +164,26 @@ class FactorDefinition:
 
 @lru_cache(maxsize=1)
 def load_factor_catalogue() -> tuple[FactorDefinition, ...]:
-    """Load and strictly validate the fixed factor catalogue."""
+    """Load the historical 18-variable catalogue used by legacy exports."""
+
+    return _load_factor_catalogue(FACTOR_DEFINITIONS_PATH, FACTOR_CODES)
+
+
+@lru_cache(maxsize=1)
+def load_hierarchical_factor_catalogue() -> tuple[FactorDefinition, ...]:
+    """Load the current 17-criterion hierarchical research catalogue."""
+
+    return _load_factor_catalogue(
+        HIERARCHICAL_FACTOR_DEFINITIONS_PATH,
+        HIERARCHICAL_FACTOR_CODES,
+    )
+
+
+def _load_factor_catalogue(
+    path: Path,
+    expected_codes: tuple[str, ...],
+) -> tuple[FactorDefinition, ...]:
+    """Load and strictly validate one canonical factor catalogue."""
 
     expected_fields = [
         "factor_code",
@@ -145,11 +191,11 @@ def load_factor_catalogue() -> tuple[FactorDefinition, ...]:
         "criterion",
         "full_definition",
     ]
-    with FACTOR_DEFINITIONS_PATH.open(encoding="utf-8", newline="") as handle:
+    with path.open(encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         if reader.fieldnames != expected_fields:
             raise ValueError(
-                "data/factors.csv must contain exactly the columns "
+                f"{path.name} must contain exactly the columns "
                 + ",".join(expected_fields)
                 + "."
             )
@@ -163,10 +209,10 @@ def load_factor_catalogue() -> tuple[FactorDefinition, ...]:
             for row in reader
         )
 
-    if tuple(item.code for item in catalogue) != FACTOR_CODES:
+    if tuple(item.code for item in catalogue) != expected_codes:
         raise ValueError(
-            "data/factors.csv must contain each configured factor exactly once "
-            "and in instrument order."
+            f"{path.name} must contain each configured factor exactly once and "
+            "in instrument order."
         )
     if any(
         not item.dimension or not item.criterion or not item.definition

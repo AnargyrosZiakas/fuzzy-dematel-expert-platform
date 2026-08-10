@@ -7,12 +7,15 @@ from html import escape
 import streamlit as st
 
 from components.layout import navigation_buttons, page_header
-from config import SCALE_ITEMS, ResearchSettings, load_factor_catalogue
+from config import (
+    SCALE_ITEMS,
+    ResearchSettings,
+    load_hierarchical_factor_catalogue,
+)
 from research_content import (
     CONTACT_EMAIL,
     DIRECT_INFLUENCE_REMINDER,
     DOCTORAL_RESEARCH_TITLE,
-    EXPECTED_COMPLETION_TIME,
     INVITATION_PARAGRAPHS,
     METHOD_PURPOSE_PARAGRAPHS,
     RESEARCHER_NAME,
@@ -41,7 +44,7 @@ def _render_scale() -> None:
 
 
 def _render_factor_catalogue() -> None:
-    catalogue = load_factor_catalogue()
+    catalogue = load_hierarchical_factor_catalogue()
     dimensions = dict.fromkeys(item.dimension for item in catalogue)
     for dimension in dimensions:
         with st.expander(str(dimension), expanded=False):
@@ -139,10 +142,9 @@ def render() -> None:
         )
         st.write("")
         st.markdown(
-            "<div class='content-card'><h3>Estimated completion time</h3>"
-            f"<p><strong>{escape(EXPECTED_COMPLETION_TIME)}</strong></p>"
-            "<p>Progress is saved after every selection, and the four sections "
-            "can be revisited before submission.</p></div>",
+            "<div class='content-card'><h3>Progress and review</h3>"
+            "<p>Progress is saved after every selection. All four sections can "
+            "be revisited and reviewed before submission.</p></div>",
             unsafe_allow_html=True,
         )
 

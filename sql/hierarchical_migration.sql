@@ -1,15 +1,16 @@
 -- Fuzzy DEMATEL Expert Evaluation Platform
 -- Idempotent migration for the hierarchical four-matrix questionnaire.
 -- Run after sql/schema.sql on a new project, or run this file alone on the
--- existing seven-set project. Historical tables and responses are not modified.
+-- existing seven-set project. To upgrade hierarchical_v1, run
+-- sql/hierarchical_v2_migration.sql instead.
 
 create extension if not exists pgcrypto;
 
 create table if not exists public.hierarchical_questionnaires (
     respondent_id uuid primary key,
     expert_code text not null,
-    design_version text not null default 'hierarchical_v1'
-        check (design_version = 'hierarchical_v1'),
+    design_version text not null default 'hierarchical_v2'
+        check (design_version = 'hierarchical_v2'),
     status text not null default 'in_progress'
         check (status in ('in_progress', 'completed')),
     started_at timestamptz not null default now(),
@@ -57,8 +58,7 @@ with criteria(matrix_id, ordinal, code, name) as (
         ('strategic', 4, 'S4', 'Airline’s carbon offset programme quality and credibility'),
         ('strategic', 5, 'S5', 'Airline’s operational and financial capacity to adopt Sustainable Aviation Fuel (SAF), including access to supply, contracts, infrastructure, operational integration and cost management'),
         ('strategic', 6, 'S6', 'Airline’s effectiveness in communicating sustainability to passengers'),
-        ('strategic', 7, 'S7', 'Airline’s commitment to its stakeholders (engagement, accountability, responsiveness)'),
-        ('strategic', 8, 'S8', 'Airline’s compliance with global environmental regulations and sustainability policies'),
+        ('strategic', 7, 'S7', 'Airline’s compliance with global environmental regulations and sustainability policies'),
         ('dimension_level', 1, 'C', 'Consumer-Cultural & Behavioural'),
         ('dimension_level', 2, 'E', 'Economic & Market'),
         ('dimension_level', 3, 'S', 'Airline Strategic & Operational')
@@ -274,10 +274,10 @@ begin
     from public.hierarchical_responses hr
     where hr.respondent_id = p_respondent_id;
 
-    if (select count(*) from public.hierarchical_relationships) <> 104
-       or response_count <> 104 then
+    if (select count(*) from public.hierarchical_relationships) <> 90
+       or response_count <> 90 then
         raise exception
-            'The hierarchical questionnaire is incomplete (% of 104 responses).',
+            'The hierarchical questionnaire is incomplete (% of 90 responses).',
             response_count;
     end if;
 
@@ -319,8 +319,8 @@ grant execute on function public.complete_hierarchical_questionnaire(uuid)
     to service_role;
 
 comment on table public.hierarchical_questionnaires is
-    'Anonymous sessions for the 104-answer hierarchical Fuzzy DEMATEL design.';
+    'Anonymous sessions for the 90-answer hierarchical Fuzzy DEMATEL design.';
 comment on table public.hierarchical_relationships is
-    'The fixed 30 + 12 + 56 + 6 allowed directed relationships.';
+    'The fixed 30 + 12 + 42 + 6 allowed directed relationships.';
 comment on table public.hierarchical_responses is
     'Autosaved five-level judgments for the hierarchical design.';

@@ -152,7 +152,7 @@ def validate_hierarchical_matrix(
 def validate_hierarchical_questionnaire(
     judgments: Mapping[str, str | None],
 ) -> MatrixValidationResult:
-    """Validate all and only the 104 relationships in the hierarchical design."""
+    """Validate all and only the 90 relationships in the hierarchical design."""
 
     relationships = all_hierarchical_relationships()
     missing: list[tuple[str, str]] = []

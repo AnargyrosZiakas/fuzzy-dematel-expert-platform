@@ -11,7 +11,13 @@ import pandas as pd
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from config import CANNOT_ASSESS_VALUE, FACTOR_CODES, load_factor_catalogue
+from config import (
+    CANNOT_ASSESS_VALUE,
+    FACTOR_CODES,
+    HIERARCHICAL_DESIGN_VERSION,
+    HIERARCHICAL_REQUIRED_COMPARISONS,
+    load_factor_catalogue,
+)
 from hierarchical_questionnaire import (
     all_hierarchical_relationships,
     get_matrix_definition,
@@ -444,7 +450,7 @@ def completed_hierarchical_responses_dataframe(
     responses: Sequence[HierarchicalResponseRecord],
     questionnaires: Sequence[HierarchicalQuestionnaireRecord],
 ) -> pd.DataFrame:
-    """Return all 104 raw answers for each completed hierarchical respondent."""
+    """Return all 90 raw answers for each completed hierarchical respondent."""
 
     completed_ids = {
         questionnaire["respondent_id"]
@@ -498,7 +504,7 @@ def hierarchical_coverage_dataframe(
     *,
     minimum_evaluations: int,
 ) -> pd.DataFrame:
-    """Return all 104 allowed relationships with completed evaluation counts."""
+    """Return all 90 allowed relationships with completed evaluation counts."""
 
     if completed_responses.empty:
         counts: dict[tuple[str, str, str], int] = {}
@@ -599,7 +605,7 @@ def hierarchical_matrix_summary_dataframe(
 def hierarchical_wide_responses_dataframe(
     completed_responses: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Return one respondent per row with all 104 linguistic directions."""
+    """Return one respondent per row with all 90 linguistic directions."""
 
     relationship_columns = [
         relationship.key for relationship in all_hierarchical_relationships()
@@ -683,10 +689,10 @@ def generate_hierarchical_administrator_exports(
                 "aggregation_status",
             ],
             "value": [
-                "Hierarchical Fuzzy DEMATEL (hierarchical_v1)",
+                f"Hierarchical Fuzzy DEMATEL ({HIERARCHICAL_DESIGN_VERSION})",
                 "ROW/source influences COLUMN/target",
-                "104",
-                "cultural=30; economic=12; strategic=56; dimension_level=6",
+                str(HIERARCHICAL_REQUIRED_COMPARISONS),
+                "cultural=30; economic=12; strategic=42; dimension_level=6",
                 "Diagonal is fixed at zero and is never a respondent answer",
                 "Individual criteria from different dimensions are not evaluated",
                 "Raw evaluations only; no Fuzzy DEMATEL calculations performed",

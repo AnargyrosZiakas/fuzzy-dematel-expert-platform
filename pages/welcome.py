@@ -5,10 +5,9 @@ from __future__ import annotations
 import streamlit as st
 
 from components.layout import navigation_buttons, page_header
-from config import HIERARCHICAL_REQUIRED_COMPARISONS, MATRIX_SIZE
+from config import HIERARCHICAL_FACTOR_COUNT, HIERARCHICAL_REQUIRED_COMPARISONS
 from research_content import (
     DOCTORAL_RESEARCH_TITLE,
-    EXPECTED_COMPLETION_TIME,
     INSTITUTION_LINE,
 )
 
@@ -46,7 +45,7 @@ def render() -> None:
     st.write("")
     first, second, third = st.columns(3)
     first.markdown(
-        f"<div class='metric-number'>{MATRIX_SIZE}</div>"
+        f"<div class='metric-number'>{HIERARCHICAL_FACTOR_COUNT}</div>"
         "<div class='metric-caption'>research variables</div>",
         unsafe_allow_html=True,
     )
@@ -57,8 +56,7 @@ def render() -> None:
     )
     third.markdown(
         "<div class='metric-number'>4</div>"
-        f"<div class='metric-caption'>manageable sections · "
-        f"{EXPECTED_COMPLETION_TIME}</div>",
+        "<div class='metric-caption'>manageable sections</div>",
         unsafe_allow_html=True,
     )
     navigation_buttons(
