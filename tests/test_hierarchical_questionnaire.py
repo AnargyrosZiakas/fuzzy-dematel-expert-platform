@@ -31,11 +31,11 @@ from validation import (
 
 def test_exact_matrix_sizes_and_no_cross_dimension_pairs() -> None:
     matrices = matrix_definitions()
-    assert [len(matrix.criteria) for matrix in matrices] == [6, 4, 8, 3]
-    assert [matrix.required_comparisons for matrix in matrices] == [30, 12, 56, 6]
+    assert [len(matrix.criteria) for matrix in matrices] == [6, 4, 7, 3]
+    assert [matrix.required_comparisons for matrix in matrices] == [30, 12, 42, 6]
     relationships = all_hierarchical_relationships()
-    assert len(relationships) == HIERARCHICAL_REQUIRED_COMPARISONS == 104
-    assert len({relationship.key for relationship in relationships}) == 104
+    assert len(relationships) == HIERARCHICAL_REQUIRED_COMPARISONS == 90
+    assert len({relationship.key for relationship in relationships}) == 90
     assert all(
         relationship.source_code != relationship.target_code
         for relationship in relationships
@@ -62,18 +62,18 @@ def test_exact_scale_labels_and_tfn_values() -> None:
     ]
 
 
-def test_hierarchical_validation_requires_all_104_answers() -> None:
+def test_hierarchical_validation_requires_all_90_answers() -> None:
     relationships = all_hierarchical_relationships()
     judgments = {relationship.key: "I" for relationship in relationships}
     result = validate_hierarchical_questionnaire(judgments)
     assert result.is_valid
-    assert result.completed == result.required == 104
+    assert result.completed == result.required == 90
     judgments.pop(relationships[-1].key)
     result = validate_hierarchical_questionnaire(judgments)
     assert not result.is_valid
-    assert result.completed == 103
+    assert result.completed == 89
 
-    for matrix, required in zip(matrix_definitions(), (30, 12, 56, 6), strict=True):
+    for matrix, required in zip(matrix_definitions(), (30, 12, 42, 6), strict=True):
         status = validate_hierarchical_matrix(matrix.id, judgments)
         assert status.required == required
 
@@ -99,7 +99,7 @@ def _completed_dataset():
     questionnaire = HierarchicalQuestionnaireRecord(
         respondent_id=str(respondent_id),
         expert_code="EXP-TEST01",
-        design_version="hierarchical_v1",
+        design_version="hierarchical_v2",
         status="completed",
         started_at=timestamp.isoformat(),
         completed_at=timestamp.isoformat(),
@@ -123,7 +123,7 @@ def test_hierarchical_export_round_trip_reconstructs_four_matrices(tmp_path) -> 
         responses, questionnaires, minimum_evaluations=1
     )
     csv_frame = pd.read_csv(BytesIO(bundle.responses_csv))
-    assert len(csv_frame) == 104
+    assert len(csv_frame) == 90
     assert set(csv_frame["matrix_id"]) == {
         "cultural",
         "economic",
@@ -140,7 +140,7 @@ def test_hierarchical_export_round_trip_reconstructs_four_matrices(tmp_path) -> 
     assert {key: values[0].shape for key, values in matrices.items()} == {
         "cultural": (6, 6),
         "economic": (4, 4),
-        "strategic": (8, 8),
+        "strategic": (7, 7),
         "dimension_level": (3, 3),
     }
     for lower, modal, upper in matrices.values():
@@ -164,14 +164,21 @@ def test_hierarchical_export_round_trip_reconstructs_four_matrices(tmp_path) -> 
     ]
 
 
-def test_database_migration_documents_the_104_pair_contract() -> None:
+def test_database_migrations_document_the_90_pair_contract() -> None:
     sql = Path("sql/hierarchical_migration.sql").read_text(encoding="utf-8")
     assert "hierarchical_questionnaires" in sql
     assert "hierarchical_relationships" in sql
     assert "hierarchical_responses" in sql
-    assert "response_count <> 104" in sql
+    assert "response_count <> 90" in sql
     assert (
         "on conflict on constraint hierarchical_questionnaires_pkey do nothing"
         in sql
     )
     assert "on conflict (respondent_id)" not in sql
+    upgrade_sql = Path("sql/hierarchical_v2_migration.sql").read_text(
+        encoding="utf-8"
+    )
+    assert "response_count <> 90" in upgrade_sql
+    assert "hierarchical_v2" in upgrade_sql
+    assert "completed hierarchical_v1" in upgrade_sql
+    assert "source_code = 'S8'" in upgrade_sql

@@ -159,7 +159,7 @@ def test_hierarchical_repository_starts_and_autosaves_allowed_pair() -> None:
         {
             "respondent_id": str(respondent_id),
             "expert_code": "EXP-TEST01",
-            "design_version": "hierarchical_v1",
+            "design_version": "hierarchical_v2",
             "status": "in_progress",
             "started_at": "2026-08-02T12:00:00+00:00",
             "completed_at": None,
@@ -169,7 +169,7 @@ def test_hierarchical_repository_starts_and_autosaves_allowed_pair() -> None:
         client, SupabaseSettings("https://example.supabase.co", "secret")
     )
     questionnaire = repository.start_questionnaire(respondent_id, "EXP-TEST01")
-    assert questionnaire["design_version"] == "hierarchical_v1"
+    assert questionnaire["design_version"] == "hierarchical_v2"
     assert client.rpc_name == "start_hierarchical_questionnaire"
 
     relationship = all_hierarchical_relationships()[0]
