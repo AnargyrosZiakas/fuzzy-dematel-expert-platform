@@ -7,6 +7,7 @@ import logging
 import streamlit as st
 
 from components.layout import page_header
+from config import HIERARCHICAL_REQUIRED_COMPARISONS
 from database import AssignmentError, DatabaseConfigurationError
 from export import (
     completed_hierarchical_responses_dataframe,
@@ -64,7 +65,7 @@ def _render_login() -> None:
 
 
 def render() -> None:
-    """Render questionnaire status, 104-pair coverage, and combined exports."""
+    """Render questionnaire status, 90-pair coverage, and combined exports."""
 
     if not st.session_state.get("admin_authenticated"):
         _render_login()
@@ -148,7 +149,8 @@ def render() -> None:
         )
     else:
         st.warning(
-            f"{len(insufficient)} of 104 relationships have fewer than "
+            f"{len(insufficient)} of {HIERARCHICAL_REQUIRED_COMPARISONS} "
+            "relationships have fewer than "
             f"{threshold} completed evaluations."
         )
         st.dataframe(
@@ -175,7 +177,7 @@ def render() -> None:
     st.caption(
         "The raw long-form rows preserve respondent ID, matrix, direction, "
         "linguistic value, TFN and timestamp. They reconstruct the 6×6, 4×4, "
-        "8×8 and 3×3 matrices without inventing missing answers."
+        "7×7 and 3×3 matrices without inventing missing answers."
     )
     csv_column, excel_column = st.columns(2)
     with csv_column:

@@ -32,12 +32,10 @@ def render() -> None:
             <li><strong>Purpose:</strong> collect expert judgements for doctoral
             research using Fuzzy DEMATEL.</li>
             <li><strong>Task:</strong> complete four hierarchical matrices containing
-            104 directed influence relationships in total.</li>
+            90 directed influence relationships in total.</li>
             <li><strong>Voluntary participation:</strong> participation is voluntary.
             You may leave at any time before submitting, without providing a reason
             or experiencing negative consequences.</li>
-            <li><strong>Time:</strong> completion is expected to take approximately
-            10 minutes.</li>
             <li><strong>Anonymity:</strong> you will not be asked for your name,
             email address, employer or other directly identifying information.</li>
             <li><strong>Confidentiality:</strong> responses are used exclusively for
