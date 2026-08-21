@@ -13,9 +13,9 @@ from components.fuzzy_matrix import (
     render_scale_reference,
 )
 from components.layout import go_to_page, page_header
-from config import HIERARCHICAL_REQUIRED_COMPARISONS
+from config import HIERARCHICAL_REQUIRED_COMPARISONS, SCALE_CODES
 from database import AssignmentError, AutosaveError, DatabaseConfigurationError
-from hierarchical_questionnaire import matrix_definitions
+from hierarchical_questionnaire import matrix_definitions, relationships_for_matrix
 from models import HierarchicalRelationship
 from research_content import DIRECT_INFLUENCE_REMINDER
 from services import get_repository
@@ -104,6 +104,28 @@ def _autosave_response(
     st.session_state["judgments"] = judgments
     st.session_state["autosave_error"] = None
     st.session_state["pending_relationship_key"] = None
+    st.session_state["active_relationship_key"] = _next_unanswered_key(
+        relationship, judgments
+    )
+
+
+def _next_unanswered_key(
+    relationship: HierarchicalRelationship,
+    judgments: dict[str, str],
+) -> str:
+    """Advance to the next unanswered pair after a successful autosave."""
+
+    relationships = relationships_for_matrix(relationship.matrix_id)
+    current_index = next(
+        index
+        for index, configured in enumerate(relationships)
+        if configured.key == relationship.key
+    )
+    for offset in range(1, len(relationships) + 1):
+        candidate = relationships[(current_index + offset) % len(relationships)]
+        if judgments.get(candidate.key) not in SCALE_CODES:
+            return candidate.key
+    return relationship.key
 
 
 def _change_matrix(index: int) -> None:
@@ -132,7 +154,15 @@ def render() -> None:
         st.button("← Back to expert code", on_click=go_to_page, args=(3,))
         return
     if not _ensure_questionnaire():
-        st.button("← Back to expert code", on_click=go_to_page, args=(3,))
+        back_column, retry_column = st.columns(2)
+        with back_column:
+            st.button("← Back to expert code", on_click=go_to_page, args=(3,))
+        with retry_column:
+            st.button(
+                "Retry secure connection",
+                type="primary",
+                use_container_width=True,
+            )
         return
 
     matrices = matrix_definitions()
@@ -223,6 +253,13 @@ def render() -> None:
             f"{len(matrix_status.missing)} relationship(s) remain in this matrix."
         )
 
+    if not matrix_status.is_valid:
+        st.info(
+            f"Complete the remaining {len(matrix_status.missing)} relationship(s) "
+            "to unlock Continue. After each successful save, the next unanswered "
+            "relationship opens automatically."
+        )
+
     previous_column, _, next_column = st.columns([1.35, 3, 1.5])
     with previous_column:
         if index == 0:
@@ -243,6 +280,7 @@ def render() -> None:
         st.button(
             "Review questionnaire" if index == 3 else "Continue →",
             type="primary",
+            disabled=not matrix_status.is_valid,
             on_click=_continue_from_matrix,
             args=(index,),
             use_container_width=True,
