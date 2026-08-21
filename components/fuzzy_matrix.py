@@ -104,6 +104,8 @@ def _axis_highlight_styles(
 def _render_active_panel(
     relationship: HierarchicalRelationship,
     *,
+    position: int,
+    total: int,
     selected_value: str | None,
     on_change: Callable[..., None],
 ) -> None:
@@ -114,7 +116,7 @@ def _render_active_panel(
     )
     st.markdown(
         "<div class='active-relationship-card'>"
-        "<span class='active-kicker'>Current relationship</span>"
+        f"<span class='active-kicker'>Relationship {position} of {total}</span>"
         f"<div class='active-code'>{escape(relationship.source_code)} "
         f"→ {escape(relationship.target_code)}</div>"
         "<div class='active-names'>"
@@ -178,13 +180,24 @@ def render_fuzzy_matrix(
     with st.container(key=f"relationship_panel_{matrix.id}"):
         _render_active_panel(
             active,
+            position=(
+                next(
+                    index
+                    for index, relationship in enumerate(
+                        relationships_for_matrix(matrix.id), start=1
+                    )
+                    if relationship.key == active.key
+                )
+            ),
+            total=matrix.required_comparisons,
             selected_value=judgments.get(active.key),
             on_change=on_change,
         )
 
     st.caption(
-        "Select a matrix cell, then choose its influence level above. Completed "
-        "cells always display the saved acronym."
+        "Choose an influence level above to save and move automatically to the "
+        "next unanswered relationship. Select any matrix cell to review or change "
+        "that specific answer."
     )
     with st.container(key=f"matrix_grid_{matrix.id}"):
         header_columns = st.columns(
