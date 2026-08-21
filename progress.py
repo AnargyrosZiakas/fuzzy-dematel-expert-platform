@@ -10,6 +10,7 @@ import streamlit as st
 from database import AssignmentError, DatabaseConfigurationError
 from hierarchical_questionnaire import matrix_definitions
 from services import get_repository
+from validation import validate_hierarchical_matrix
 
 LOGGER = logging.getLogger(__name__)
 
@@ -18,11 +19,7 @@ def _first_incomplete_matrix(judgments: dict[str, str]) -> int:
     """Return the first matrix containing an unanswered relationship."""
 
     for index, matrix in enumerate(matrix_definitions()):
-        required = matrix.required_comparisons
-        completed = sum(
-            key.startswith(f"{matrix.id}|") for key in judgments
-        )
-        if completed < required:
+        if not validate_hierarchical_matrix(matrix.id, judgments).is_valid:
             return index
     return len(matrix_definitions()) - 1
 

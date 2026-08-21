@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Mapping, Sequence
+import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -129,6 +130,53 @@ def _response_data(response: Any) -> list[dict[str, Any]]:
     if isinstance(data, dict):
         return [dict(data)]
     return [dict(row) for row in data]
+
+
+def _is_transient_database_error(error: BaseException) -> bool:
+    """Return whether an exception chain represents a temporary network fault."""
+
+    transient_names = {
+        "ConnectError",
+        "ConnectTimeout",
+        "NetworkError",
+        "PoolTimeout",
+        "ReadError",
+        "ReadTimeout",
+        "RemoteProtocolError",
+        "WriteError",
+        "WriteTimeout",
+    }
+    current: BaseException | None = error
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        if isinstance(current, (ConnectionError, TimeoutError)):
+            return True
+        if current.__class__.__name__ in transient_names:
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
+def _execute_with_transient_retry[T](
+    operation: Callable[[], T],
+    *,
+    attempts: int = 3,
+) -> T:
+    """Retry safe Supabase operations after short-lived connectivity failures."""
+
+    last_error: BaseException | None = None
+    for attempt in range(max(1, attempts)):
+        try:
+            return operation()
+        except Exception as exc:
+            last_error = exc
+            if attempt >= attempts - 1 or not _is_transient_database_error(exc):
+                raise
+            time.sleep(0.3 * (2**attempt))
+    raise RuntimeError(
+        "Database operation failed without an exception."
+    ) from last_error
 
 
 class SupabaseResponseRepository:
@@ -389,8 +437,8 @@ class HierarchicalQuestionnaireRepository:
         """Atomically create or return an anonymous questionnaire session."""
 
         try:
-            response = (
-                self._query_root()
+            response = _execute_with_transient_retry(
+                lambda: self._query_root()
                 .rpc(
                     "start_hierarchical_questionnaire",
                     {
@@ -408,6 +456,11 @@ class HierarchicalQuestionnaireRepository:
             raise
         except Exception as exc:  # pragma: no cover - remote behavior
             LOGGER.exception("Hierarchical questionnaire start failed")
+            if _is_transient_database_error(exc):
+                raise AssignmentError(
+                    "The secure research database is temporarily unavailable. "
+                    "Please wait a moment and choose Retry secure connection."
+                ) from exc
             raise AssignmentError(
                 "Your questionnaire could not be started. Please try again."
             ) from exc
@@ -418,8 +471,8 @@ class HierarchicalQuestionnaireRepository:
         """Load one hierarchical session for refresh-safe recovery."""
 
         try:
-            response = (
-                self._query_root()
+            response = _execute_with_transient_retry(
+                lambda: self._query_root()
                 .table(self._settings.hierarchical_assignment_table)
                 .select("*")
                 .eq("respondent_id", str(respondent_id))
@@ -440,8 +493,8 @@ class HierarchicalQuestionnaireRepository:
         """Load every autosaved hierarchical answer for one respondent."""
 
         try:
-            response = (
-                self._query_root()
+            response = _execute_with_transient_retry(
+                lambda: self._query_root()
                 .table(self._settings.hierarchical_response_table)
                 .select("*")
                 .eq("respondent_id", str(respondent_id))
@@ -478,8 +531,8 @@ class HierarchicalQuestionnaireRepository:
                 "This relationship is not part of the hierarchical questionnaire."
             )
         try:
-            (
-                self._query_root()
+            _execute_with_transient_retry(
+                lambda: self._query_root()
                 .table(self._settings.hierarchical_response_table)
                 .upsert(
                     dict(record),
@@ -502,8 +555,8 @@ class HierarchicalQuestionnaireRepository:
         """Verify all 90 answers and atomically mark the session completed."""
 
         try:
-            response = (
-                self._query_root()
+            response = _execute_with_transient_retry(
+                lambda: self._query_root()
                 .rpc(
                     "complete_hierarchical_questionnaire",
                     {"p_respondent_id": str(respondent_id)},

@@ -8,7 +8,8 @@ from streamlit.testing.v1 import AppTest
 
 import pages.matrix as matrix_page
 import pages.submit as submit_page
-from hierarchical_questionnaire import all_hierarchical_relationships
+from config import SCALE_CODES
+from hierarchical_questionnaire import matrix_definitions, relationships_for_matrix
 
 
 class FakeQuestionnaireRepository:
@@ -43,6 +44,7 @@ class FakeQuestionnaireRepository:
         self.responses.append(dict(record))
 
     def complete_questionnaire(self, respondent_id):
+        assert len(self.responses) == 90
         return {
             "respondent_id": str(respondent_id),
             "expert_code": "EXP-PILOT01",
@@ -75,35 +77,49 @@ def test_complete_hierarchical_ui_flow_and_visible_cell_states(monkeypatch) -> N
     assert app.session_state["questionnaire"]["design_version"] == "hierarchical_v2"
     assert len(app.radio) == 1
     assert not app.exception
-    assert any(
-        "Consumer-Cultural & Behavioural" in title.value
-        for title in app.title
-    )
+    saved = 0
+    for matrix_index, matrix in enumerate(matrix_definitions()):
+        assert any(matrix.label in title.value for title in app.title)
+        relationships = relationships_for_matrix(matrix.id)
+        next_label = (
+            "Review questionnaire"
+            if matrix_index == len(matrix_definitions()) - 1
+            else "Continue →"
+        )
+        assert _button_by_label(app, next_label).disabled is True
 
-    for response in ("VL", "LI", "I", "HI", "VH"):
-        app.radio[0].set_value(response).run()
-        cell = app.button(key="cell_cultural_C1_C2")
-        assert cell.label == response
-        assert response in app.session_state["judgments"].values()
-        assert not app.exception
+        for relationship_index, relationship in enumerate(relationships):
+            assert app.session_state["active_relationship_key"] == relationship.key
+            response = SCALE_CODES[(saved + relationship_index) % len(SCALE_CODES)]
+            app.radio[0].set_value(response).run()
+            saved += 1
 
-    for expected_title in (
-        "Economic & Market",
-        "Airline Strategic & Operational",
-        "Relationships Between Dimensions",
-    ):
-        _button_by_label(app, "Continue →").click().run()
-        assert any(expected_title in title.value for title in app.title)
+            cell = app.button(
+                key=(
+                    f"cell_{matrix.id}_{relationship.source_code}_"
+                    f"{relationship.target_code}"
+                )
+            )
+            assert cell.label == response
+            assert app.session_state["judgments"][relationship.key] == response
+            assert len(repository.responses) == saved
+            assert not app.exception
 
-    app.session_state["judgments"] = {
-        relationship.key: "I"
-        for relationship in all_hierarchical_relationships()
-    }
-    app.run()
-    _button_by_label(app, "Review questionnaire").click().run()
+            if relationship_index < len(relationships) - 1:
+                assert (
+                    app.session_state["active_relationship_key"]
+                    == relationships[relationship_index + 1].key
+                )
+
+        assert _button_by_label(app, next_label).disabled is False
+        _button_by_label(app, next_label).click().run()
+
+    assert saved == 90
+    assert len(app.session_state["judgments"]) == 90
     submit_button = _button_by_label(app, "Submit expert evaluation")
     assert submit_button.disabled is False
     submit_button.click().run()
 
     assert app.session_state["submitted"] is True
+    assert app.session_state["questionnaire"]["status"] == "completed"
     assert not app.exception
