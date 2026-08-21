@@ -7,6 +7,7 @@ from uuid import UUID
 
 import pytest
 
+import database
 from config import TOTAL_CELLS
 from database import (
     AutosaveError,
@@ -15,6 +16,7 @@ from database import (
     SubmissionError,
     SupabaseResponseRepository,
     SupabaseSettings,
+    _execute_with_transient_retry,
 )
 from hierarchical_questionnaire import all_hierarchical_relationships
 from questionnaire_sets import get_questionnaire_set
@@ -185,3 +187,35 @@ def test_hierarchical_repository_starts_and_autosaves_allowed_pair() -> None:
     assert client.query.on_conflict == (
         "respondent_id,matrix_id,source_code,target_code"
     )
+
+
+def test_transient_database_failures_are_retried(monkeypatch) -> None:
+    class ConnectError(Exception):
+        pass
+
+    attempts = 0
+    monkeypatch.setattr(database.time, "sleep", lambda _delay: None)
+
+    def eventually_succeeds():
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise ConnectError("temporary DNS failure")
+        return "connected"
+
+    assert _execute_with_transient_retry(eventually_succeeds) == "connected"
+    assert attempts == 3
+
+
+def test_non_transient_database_failures_are_not_retried(monkeypatch) -> None:
+    attempts = 0
+    monkeypatch.setattr(database.time, "sleep", lambda _delay: None)
+
+    def invalid_request():
+        nonlocal attempts
+        attempts += 1
+        raise ValueError("invalid request")
+
+    with pytest.raises(ValueError, match="invalid request"):
+        _execute_with_transient_retry(invalid_request)
+    assert attempts == 1
