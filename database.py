@@ -431,6 +431,28 @@ class HierarchicalQuestionnaireRepository:
             return self._client
         return self._client.schema(self._settings.schema_name)
 
+    def health_check(self) -> None:
+        """Verify read-only access to the live research database.
+
+        The query deliberately returns at most one identifier and never creates
+        a questionnaire session or response. It is used by the deployment
+        monitor to exercise both Streamlit and Supabase safely.
+        """
+
+        try:
+            _execute_with_transient_retry(
+                lambda: self._query_root()
+                .table(self._settings.hierarchical_assignment_table)
+                .select("respondent_id")
+                .limit(1)
+                .execute()
+            )
+        except Exception as exc:  # pragma: no cover - remote behavior
+            LOGGER.exception("Research database health check failed")
+            raise AssignmentError(
+                "The secure research database is currently unavailable."
+            ) from exc
+
     def start_questionnaire(
         self, respondent_id: UUID, expert_code: str
     ) -> HierarchicalQuestionnaireRecord:

@@ -6,6 +6,7 @@ from typing import Any
 
 from streamlit.testing.v1 import AppTest
 
+import pages.health as health_page
 import pages.matrix as matrix_page
 import pages.submit as submit_page
 from config import SCALE_CODES
@@ -59,6 +60,28 @@ def _button_by_label(app: AppTest, label: str):
     matches = [button for button in app.button if button.label == label]
     assert len(matches) == 1
     return matches[0]
+
+
+def test_health_page_checks_database_without_questionnaire_session(
+    monkeypatch,
+) -> None:
+    class HealthyRepository:
+        checked = False
+
+        def health_check(self) -> None:
+            self.checked = True
+
+    repository = HealthyRepository()
+    monkeypatch.setattr(health_page, "get_repository", lambda: repository)
+
+    app = AppTest.from_file("app.py", default_timeout=30)
+    app.query_params["health"] = "1"
+    app.run()
+
+    assert repository.checked is True
+    assert any("HEALTH_CHECK_OK" in item.value for item in app.code)
+    assert "respondent_id" not in app.session_state
+    assert not app.exception
 
 
 def test_complete_hierarchical_ui_flow_and_visible_cell_states(monkeypatch) -> None:

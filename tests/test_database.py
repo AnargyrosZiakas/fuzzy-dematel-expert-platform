@@ -90,6 +90,12 @@ class FakeDistributedQuery:
         assert returning == "minimal"
         return self
 
+    def select(self, _columns: str):
+        return self
+
+    def limit(self, _count: int):
+        return self
+
     def execute(self):
         return {"data": self.data}
 
@@ -187,6 +193,17 @@ def test_hierarchical_repository_starts_and_autosaves_allowed_pair() -> None:
     assert client.query.on_conflict == (
         "respondent_id,matrix_id,source_code,target_code"
     )
+
+
+def test_hierarchical_health_check_is_read_only() -> None:
+    client = FakeDistributedClient()
+    repository = HierarchicalQuestionnaireRepository(
+        client, SupabaseSettings("https://example.supabase.co", "secret")
+    )
+
+    repository.health_check()
+
+    assert client.query.upserted is None
 
 
 def test_transient_database_failures_are_retried(monkeypatch) -> None:

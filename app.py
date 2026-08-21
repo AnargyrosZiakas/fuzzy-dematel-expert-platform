@@ -13,7 +13,7 @@ from components.layout import (
     render_sidebar,
 )
 from config import APP_ICON, APP_TITLE
-from pages import admin, consent, expert_code, matrix, research, submit, welcome
+from pages import admin, consent, expert_code, health, matrix, research, submit, welcome
 from progress import restore_progress_from_query
 from utils import configure_logging
 
@@ -44,8 +44,18 @@ def main() -> None:
         },
     )
     configure_logging()
-    initialize_session_state()
     inject_global_styles()
+
+    health_mode = str(st.query_params.get("health", "")).lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if health_mode:
+        health.render()
+        return
+
+    initialize_session_state()
 
     admin_mode = str(st.query_params.get("admin", "")).lower() in {
         "1",
